@@ -192,6 +192,25 @@ export const getWeeklyRevenue = query({
   },
 });
 
+// PER-OUTLET DAILY REVENUE
+export const getOutletDailyRevenue = query({
+  args: { today: v.string() },
+  handler: async (ctx, args) => {
+    const allBills = await ctx.db.query("bills").collect();
+    const todayBills = allBills.filter((b) => b.createdAt.startsWith(args.today));
+
+    const sum = (type: string) =>
+      todayBills.filter((b) => b.billType === type).reduce((acc, b) => acc + b.totalAmount, 0);
+
+    return {
+      hotel: Math.round(sum("room") * 100) / 100,
+      restaurant: Math.round(sum("restaurant") * 100) / 100,
+      cafe: Math.round(sum("cafe") * 100) / 100,
+      banquet: Math.round(sum("banquet") * 100) / 100,
+    };
+  },
+});
+
 // 30-DAY OCCUPANCY TREND
 export const getOccupancyTrend = query({
   args: { today: v.string() }, // "2024-11-14"
