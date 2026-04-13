@@ -368,7 +368,7 @@ export default function SettingsPage() {
     <div className="flex flex-col min-h-full">
       <DesktopTopbar title="Settings" />
 
-      <div className="p-5 lg:p-6 max-w-4xl mx-auto w-full pb-28 lg:pb-6">
+      <div className="p-4 sm:p-5 lg:p-6 max-w-4xl mx-auto w-full pb-28 lg:pb-6 overflow-x-hidden">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">System Configuration</h1>
           <p className="text-sm text-gray-500 mt-1">Manage global preferences, taxation, and inventory databases.</p>
@@ -391,7 +391,7 @@ export default function SettingsPage() {
           ))}
         </div>
 
-        <div className="max-w-3xl">
+        <div className="w-full max-w-3xl">
           {activeTab === "general" && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
               <Section title="Hotel Profile" description="This information appears on all guest invoices." icon={Building2}>
@@ -499,12 +499,12 @@ export default function SettingsPage() {
           {activeTab === "rooms" && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
               <Section title="Add New Room" description="Register a new room to the property database." icon={BedDouble}>
-                <div className="grid grid-cols-4 gap-4 items-end">
-                  <div className="col-span-2 space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">Room Number</Label>
                     <Input placeholder="e.g. 101" value={newRoom.number} onChange={e => setNewRoom(p => ({ ...p, number: e.target.value, floor: e.target.value.charAt(0) }))} className={inputClass} />
                   </div>
-                  <div className="col-span-1 space-y-1.5">
+                  <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">Category</Label>
                     <select value={newRoom.category} onChange={e => setNewRoom(p => ({...p, category: e.target.value}))} className={cn("w-full px-3", inputClass)}>
                       <option>Standard</option>
@@ -513,11 +513,11 @@ export default function SettingsPage() {
                       <option>Suite</option>
                     </select>
                   </div>
-                  <div className="col-span-1 space-y-1.5">
-                    <Label className="text-xs font-semibold">Tariff (₹)</Label>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs font-semibold">Tariff (₹/night)</Label>
                     <Input type="number" placeholder="0" value={newRoom.tariff} onChange={e => setNewRoom(p => ({ ...p, tariff: e.target.value }))} className={inputClass} />
                   </div>
-                  <div className="col-span-4 space-y-1.5 mt-2">
+                  <div className="space-y-1.5 sm:col-span-2 mt-1">
                     <Label className="text-xs font-semibold">Gallery Photos (will appear on room detail page)</Label>
                     <GalleryUploader value={newRoom.images} onChange={(urls) => setNewRoom(p => ({ ...p, images: urls, image: urls[0] || "" }))} />
                   </div>
@@ -619,8 +619,8 @@ export default function SettingsPage() {
           {activeTab === "banquets" && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
               <Section title="Add Banquet Hall" description="Register a new event hall or venue space." icon={LayoutDashboard}>
-                <div className="grid grid-cols-3 gap-4 items-end">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5 sm:col-span-2">
                     <Label className="text-xs font-semibold">Hall Name</Label>
                     <Input placeholder="e.g. Grand Crystal Hall" value={newHall.name} onChange={e => setNewHall(p => ({ ...p, name: e.target.value }))} className={inputClass} />
                   </div>
@@ -637,11 +637,11 @@ export default function SettingsPage() {
                     <Label className="text-xs font-semibold">Capacity (PAX)</Label>
                     <Input type="number" placeholder="500" value={newHall.capacity} onChange={e => setNewHall(p => ({ ...p, capacity: e.target.value }))} className={inputClass} />
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 sm:col-span-2">
                     <Label className="text-xs font-semibold">Starting Price (₹)</Label>
                     <Input type="number" placeholder="0" value={newHall.price} onChange={e => setNewHall(p => ({ ...p, price: e.target.value }))} className={inputClass} />
                   </div>
-                  <div className="col-span-3 space-y-1.5 mt-2">
+                  <div className="space-y-1.5 sm:col-span-2 mt-1">
                     <Label className="text-xs font-semibold">Hall Photo (Optional)</Label>
                     <ImageUploader value={newHall.image} onChange={(url) => setNewHall(p => ({ ...p, image: url }))} />
                   </div>
@@ -744,24 +744,22 @@ export default function SettingsPage() {
           {activeTab === "menu" && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
               <Section title="Add Menu Item" description="Add items to Restaurant or Café POS menus." icon={UtensilsCrossed}>
-                <div className="grid grid-cols-4 gap-4 items-end mb-4">
-                  <div className="col-span-2 space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5 sm:col-span-2">
                     <Label className="text-xs font-semibold">Item Name</Label>
                     <Input placeholder="e.g. Masala Dosa" value={newMenuItem.name} onChange={e => setNewMenuItem(p => ({ ...p, name: e.target.value }))} className={inputClass} />
                   </div>
-                  <div className="col-span-1 space-y-1.5">
+                  <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">Price (₹)</Label>
                     <Input type="number" placeholder="0" value={newMenuItem.price} onChange={e => setNewMenuItem(p => ({ ...p, price: e.target.value }))} className={inputClass} />
                   </div>
-                  <div className="col-span-1 space-y-1.5">
+                  <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">Outlet</Label>
                     <select value={newMenuItem.outlet} onChange={e => setNewMenuItem(p => ({...p, outlet: e.target.value}))} className={cn("w-full px-3", inputClass)}>
                       <option value="restaurant">Restaurant</option>
                       <option value="cafe">Café</option>
                     </select>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 items-end">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">Category Type</Label>
                     <select value={newMenuItem.category} onChange={e => setNewMenuItem(p => ({...p, category: e.target.value}))} className={cn("w-full px-3", inputClass)}>
@@ -790,10 +788,10 @@ export default function SettingsPage() {
                       )}
                     </select>
                   </div>
-                </div>
-                <div className="space-y-1.5 mt-4">
-                  <Label className="text-xs font-semibold">Item Photo (Optional)</Label>
-                  <ImageUploader value={newMenuItem.image} onChange={(url) => setNewMenuItem(p => ({ ...p, image: url }))} />
+                  <div className="space-y-1.5 sm:col-span-2 mt-1">
+                    <Label className="text-xs font-semibold">Item Photo (Optional)</Label>
+                    <ImageUploader value={newMenuItem.image} onChange={(url) => setNewMenuItem(p => ({ ...p, image: url }))} />
+                  </div>
                 </div>
                 <Button onClick={handleAddMenu} disabled={!newMenuItem.name || !newMenuItem.price} className="w-full mt-4 bg-green-600 text-white rounded-xl h-10 gap-2 hover:bg-green-700">
                   <Plus size={16} /> Create Menu Item
