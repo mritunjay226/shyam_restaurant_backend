@@ -183,18 +183,17 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-gray-900 tracking-tight">{title} Orders</h1>
         </div>
 
-        {/* ── Table Selector ── clipped scrolling row, never stretches page */}
-        <div className="mb-4 -mx-3 px-3 sm:mx-0 sm:px-0">
+        {/* ── Table Selector ── flex-wrap on mobile so all fit nicely without clipping */}
+        <div className="mb-4">
           <div
-            className="flex gap-1.5 overflow-x-auto bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm"
-            style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+            className="flex flex-wrap gap-1.5 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm"
           >
             {TABLES.map(t => (
               <button
                 key={t}
                 onClick={() => setActiveTable(t)}
                 className={cn(
-                  "shrink-0 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap",
+                  "px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap",
                   activeTable === t
                     ? "bg-gray-900 text-white shadow-sm"
                     : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
@@ -228,18 +227,17 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
         {/* ── Category Pills ── only shown when not searching */}
         {!search && (
           <div
-            className="flex gap-1.5 mb-5 -mx-3 px-3 sm:mx-0 sm:px-0 overflow-x-auto"
-            style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+            className="flex flex-wrap gap-1.5 mb-5"
           >
             {categories.map(c => (
               <button
                 key={c}
                 onClick={() => setActiveCategory(c)}
                 className={cn(
-                  "shrink-0 px-4 py-2 rounded-full text-sm font-bold border transition-all",
+                  "px-4 py-2 rounded-full text-sm font-bold border transition-all whitespace-nowrap",
                   activeCategory === c
                     ? "bg-white border-gray-900 text-gray-900 shadow-sm"
-                    : "bg-transparent border-transparent text-gray-400 hover:text-gray-700"
+                    : "bg-transparent border-transparent text-gray-500 hover:text-gray-900"
                 )}
               >
                 {c}
