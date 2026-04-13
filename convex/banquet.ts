@@ -145,6 +145,26 @@ export const createBanquetBooking = mutation({
       }
     }
 
+    // ── 2. GUEST PROFILE (upsert) ──────────────────────────────────
+    const existingGuest = await ctx.db
+      .query("guests")
+      .withIndex("by_phone", (q) => q.eq("phone", args.guestPhone))
+      .first();
+
+    if (existingGuest) {
+      await ctx.db.patch(existingGuest._id, {
+        totalVisits: existingGuest.totalVisits + 1,
+        totalSpend: existingGuest.totalSpend + args.totalAmount,
+      });
+    } else {
+      await ctx.db.insert("guests", {
+        name: args.guestName,
+        phone: args.guestPhone,
+        totalVisits: 1,
+        totalSpend: args.totalAmount,
+      });
+    }
+
     return ctx.db.insert("banquetBookings", {
       hallId: args.hallId,
       eventName: args.eventName,
@@ -162,6 +182,7 @@ export const createBanquetBooking = mutation({
       status: "confirmed",
       notes: args.notes,
     });
+
   },
 });
 

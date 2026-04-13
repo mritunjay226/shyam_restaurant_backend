@@ -6,8 +6,9 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, DoorOpen, UtensilsCrossed, Coffee,
   PartyPopper, Receipt, BarChart3, Settings,
-  LogOut, ChevronRight
+  LogOut, ChevronRight, Users
 } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/AuthProvider";
 import { useQuery } from "convex/react";
@@ -19,7 +20,9 @@ const NAV_GROUPS = [
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/rooms", label: "Rooms", icon: DoorOpen },
+      { href: "/customers", label: "Customers", icon: Users },
     ]
+
   },
   {
     label: "Food & Events",

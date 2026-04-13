@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as banquet from "../banquet.js";
 import type * as billing from "../billing.js";
 import type * as bookings from "../bookings.js";
+import type * as guests from "../guests.js";
 import type * as menuItems from "../menuItems.js";
 import type * as orders from "../orders.js";
 import type * as reports from "../reports.js";
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   banquet: typeof banquet;
   billing: typeof billing;
   bookings: typeof bookings;
+  guests: typeof guests;
   menuItems: typeof menuItems;
   orders: typeof orders;
   reports: typeof reports;
