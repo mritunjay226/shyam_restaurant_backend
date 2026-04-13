@@ -37,6 +37,14 @@ export const generateRoomBill = mutation({
     isGstBill: v.boolean(),
     gstin: v.optional(v.string()),
     paymentMethod: v.string(),
+    discountAmount: v.optional(v.number()),
+    serviceCharge: v.optional(v.number()),
+    housekeepingCharge: v.optional(v.number()),
+    extraCharge: v.optional(v.number()),
+    splitPayments: v.optional(v.array(v.object({
+      method: v.string(),
+      amount: v.number()
+    }))),
   },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
@@ -58,7 +66,17 @@ export const generateRoomBill = mutation({
       0
     );
 
-    const subtotal = booking.totalAmount + orderTotal;
+    let subtotal = booking.totalAmount + orderTotal;
+    
+    // Apply Additional Charges
+    const sc = args.serviceCharge || 0;
+    const hc = args.housekeepingCharge || 0;
+    const ec = args.extraCharge || 0;
+    subtotal += sc + hc + ec;
+
+    // Apply Discount
+    const discount = args.discountAmount || 0;
+    subtotal = Math.max(0, subtotal - discount);
 
     let cgst = 0;
     let sgst = 0;
@@ -79,10 +97,15 @@ export const generateRoomBill = mutation({
       isGstBill: args.isGstBill,
       gstin: args.gstin,
       subtotal: Math.round(subtotal * 100) / 100,
+      discountAmount: discount,
+      serviceCharge: sc,
+      housekeepingCharge: hc,
+      extraCharge: ec,
       cgst: Math.round(cgst * 100) / 100,
       sgst: Math.round(sgst * 100) / 100,
       totalAmount: Math.round(totalAmount * 100) / 100,
       paymentMethod: args.paymentMethod,
+      splitPayments: args.splitPayments,
       status: "generated",
       createdAt: new Date().toISOString().split("T")[0],
     });
@@ -182,6 +205,169 @@ export const generateBanquetBill = mutation({
     await ctx.db.patch(args.banquetBookingId, { status: "completed" });
 
     return billId;
+  },
+});
+
+// GENERATE TABLE BILL (Combines multiple orders)
+export const generateTableBill = mutation({
+  args: {
+    outlet: v.string(),
+    tableNumber: v.string(),
+    isGstBill: v.boolean(),
+    gstin: v.optional(v.string()),
+    paymentMethod: v.string(),
+    guestName: v.optional(v.string()),
+    discountAmount: v.optional(v.number()),
+    serviceCharge: v.optional(v.number()),
+    housekeepingCharge: v.optional(v.number()),
+    extraCharge: v.optional(v.number()),
+    splitPayments: v.optional(v.array(v.object({
+      method: v.string(),
+      amount: v.number()
+    }))),
+  },
+  handler: async (ctx, args) => {
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_outlet_table", (q) => 
+        q.eq("outlet", args.outlet).eq("tableNumber", args.tableNumber)
+      )
+      .filter((q) => 
+        q.and(
+          q.eq(q.field("roomId"), undefined),
+          q.neq(q.field("status"), "paid")
+        )
+      )
+      .collect();
+
+    if (orders.length === 0) throw new Error("No unbilled orders found for this table");
+
+    let subtotal = orders.reduce((sum, order) => sum + order.subtotal, 0);
+
+    // Apply Additional Charges
+    const sc = args.serviceCharge || 0;
+    const hc = args.housekeepingCharge || 0;
+    const ec = args.extraCharge || 0;
+    subtotal += sc + hc + ec;
+
+    // Apply discount
+    const discount = args.discountAmount || 0;
+    subtotal = Math.max(0, subtotal - discount);
+
+    let cgst = 0;
+    let sgst = 0;
+
+    if (args.isGstBill) {
+      // 6% CGST + 6% SGST on final subtotal (after discount & SC)
+      cgst = subtotal * 0.06;
+      sgst = subtotal * 0.06;
+    }
+
+    const totalAmount = subtotal + cgst + sgst;
+
+    const billId = await ctx.db.insert("bills", {
+      billType: args.outlet,
+      referenceId: `${args.outlet}-${args.tableNumber}-${Date.now()}`,
+      guestName: args.guestName || `Table ${args.tableNumber}`,
+      isGstBill: args.isGstBill,
+      gstin: args.gstin,
+      subtotal: Math.round(subtotal * 100) / 100,
+      discountAmount: discount,
+      serviceCharge: sc,
+      housekeepingCharge: hc,
+      extraCharge: ec,
+      cgst: Math.round(cgst * 100) / 100,
+      sgst: Math.round(sgst * 100) / 100,
+      totalAmount: Math.round(totalAmount * 100) / 100,
+      paymentMethod: args.paymentMethod,
+      splitPayments: args.splitPayments,
+      status: "paid",
+      createdAt: new Date().toISOString().split("T")[0],
+    });
+
+    for (const order of orders) {
+      await ctx.db.patch(order._id, { status: "paid" });
+    }
+
+    return billId;
+  },
+});
+
+// DIRECT CHECKOUT ORDER (For fast walk-ins)
+export const directCheckoutOrder = mutation({
+  args: {
+    outlet: v.string(),
+    tableNumber: v.string(), // "Walk-in" or "Takeaway"
+    items: v.array(
+      v.object({
+        menuItemId: v.id("menuItems"),
+        name: v.string(),
+        price: v.number(),
+        quantity: v.number(),
+        category: v.string(),
+        notes: v.optional(v.string()),
+        course: v.optional(v.string()),
+      })
+    ),
+    paymentMethod: v.string(),
+    guestName: v.optional(v.string()),
+    isGstBill: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    let foodTotal = 0;
+    let beverageTotal = 0;
+
+    args.items.forEach((item) => {
+      const itemTotal = item.price * item.quantity;
+      if (item.category === "Beverage") {
+        beverageTotal += itemTotal;
+      } else {
+        foodTotal += itemTotal;
+      }
+    });
+
+    const subtotal = foodTotal + beverageTotal;
+    let gstAmount = 0;
+    let cgst = 0;
+    let sgst = 0;
+
+    if (args.isGstBill) {
+      gstAmount = foodTotal * 0.05 + beverageTotal * 0.18;
+      cgst = gstAmount / 2;
+      sgst = gstAmount / 2;
+    }
+
+    const totalAmount = subtotal + gstAmount;
+
+    // Create the order
+    const orderId = await ctx.db.insert("orders", {
+      outlet: args.outlet,
+      tableNumber: args.tableNumber,
+      items: args.items,
+      subtotal: Math.round(subtotal * 100) / 100,
+      gstAmount: Math.round(gstAmount * 100) / 100,
+      totalAmount: Math.round(totalAmount * 100) / 100,
+      status: "paid", // Already paid
+      kotGenerated: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Directly generate bills
+    const billId = await ctx.db.insert("bills", {
+      billType: args.outlet,
+      referenceId: orderId,
+      guestName: args.guestName || args.tableNumber,
+      isGstBill: args.isGstBill,
+      subtotal: Math.round(subtotal * 100) / 100,
+      cgst: Math.round(cgst * 100) / 100,
+      sgst: Math.round(sgst * 100) / 100,
+      totalAmount: Math.round(totalAmount * 100) / 100,
+      paymentMethod: args.paymentMethod,
+      status: "paid",
+      createdAt: new Date().toISOString().split("T")[0],
+    });
+
+    return { orderId, billId };
   },
 });
 

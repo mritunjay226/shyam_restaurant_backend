@@ -1,109 +1,130 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-// GET ALL BANQUET HALLS
+// Time-slot rules:
+//   "morning"  = 06:00–14:00
+//   "evening"  = 14:00–23:00
+//   "full_day" = whole day (blocks morning + evening)
+//
+// Two bookings conflict if they are on the same hall + same date AND
+// their time slots overlap:
+//   full_day  conflicts with anything
+//   morning   conflicts with morning or full_day
+//   evening   conflicts with evening or full_day
+
+function slotsConflict(a: string | undefined, b: string | undefined): boolean {
+  const s1 = a || "full_day";
+  const s2 = b || "full_day";
+  if (s1 === "full_day" || s2 === "full_day") return true;
+  return s1 === s2; // morning vs morning | evening vs evening
+}
+
+// ─────────────────────────────────────────────────────────────────
+// HALL QUERIES
+// ─────────────────────────────────────────────────────────────────
+
 export const getAllHalls = query({
-  handler: async (ctx) => {
-    return await ctx.db.query("banquetHalls").collect();
-  },
+  handler: async (ctx) => ctx.db.query("banquetHalls").collect(),
 });
 
-// GET SINGLE HALL
 export const getHallById = query({
   args: { hallId: v.id("banquetHalls") },
-  handler: async (ctx, args) => {
-    return await ctx.db.get(args.hallId);
-  },
+  handler: async (ctx, args) => ctx.db.get(args.hallId),
 });
 
-// ADD HALL (admin)
+// ─────────────────────────────────────────────────────────────────
+// HALL MUTATIONS
+// ─────────────────────────────────────────────────────────────────
+
 export const addHall = mutation({
   args: {
     name: v.string(),
+    type: v.string(),
     capacity: v.number(),
+    price: v.number(),
     description: v.optional(v.string()),
+    image: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    return await ctx.db.insert("banquetHalls", {
-      ...args,
-      isActive: true,
-    });
-  },
+  handler: async (ctx, args) =>
+    ctx.db.insert("banquetHalls", { ...args, isActive: true }),
 });
 
-// TOGGLE HALL ACTIVE/INACTIVE (admin)
 export const toggleHallActive = mutation({
   args: { hallId: v.id("banquetHalls") },
   handler: async (ctx, args) => {
     const hall = await ctx.db.get(args.hallId);
     if (!hall) throw new Error("Hall not found");
-    return await ctx.db.patch(args.hallId, {
-      isActive: !hall.isActive,
-    });
+    return ctx.db.patch(args.hallId, { isActive: !hall.isActive });
   },
 });
 
-// UPDATE HALL (admin)
 export const updateHall = mutation({
   args: {
     hallId: v.id("banquetHalls"),
     name: v.optional(v.string()),
+    type: v.optional(v.string()),
     capacity: v.optional(v.number()),
+    price: v.optional(v.number()),
     description: v.optional(v.string()),
+    image: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { hallId, ...updates } = args;
-    return await ctx.db.patch(hallId, updates);
+    return ctx.db.patch(hallId, updates);
   },
 });
 
-// GET ALL BANQUET BOOKINGS
+// ─────────────────────────────────────────────────────────────────
+// BOOKING QUERIES
+// ─────────────────────────────────────────────────────────────────
+
 export const getAllBanquetBookings = query({
-  handler: async (ctx) => {
-    return await ctx.db.query("banquetBookings").collect();
-  },
+  handler: async (ctx) => ctx.db.query("banquetBookings").collect(),
 });
 
-// GET BOOKINGS BY HALL
 export const getBookingsByHall = query({
   args: { hallId: v.id("banquetHalls") },
-  handler: async (ctx, args) => {
-    return await ctx.db
+  handler: async (ctx, args) =>
+    ctx.db
       .query("banquetBookings")
       .filter((q) => q.eq(q.field("hallId"), args.hallId))
-      .collect();
-  },
+      .collect(),
 });
 
-// GET BOOKINGS BY DATE
 export const getBookingsByDate = query({
   args: { date: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
+  handler: async (ctx, args) =>
+    ctx.db
       .query("banquetBookings")
       .filter((q) => q.eq(q.field("eventDate"), args.date))
-      .collect();
-  },
+      .collect(),
 });
 
-// CREATE BANQUET BOOKING
+// ─────────────────────────────────────────────────────────────────
+// BOOKING MUTATIONS
+// ─────────────────────────────────────────────────────────────────
+
 export const createBanquetBooking = mutation({
   args: {
     hallId: v.id("banquetHalls"),
     eventName: v.string(),
     eventType: v.string(),
     eventDate: v.string(),
+    timeSlot: v.optional(v.string()),     // "morning" | "evening" | "full_day"
     guestName: v.string(),
     guestPhone: v.string(),
     guestCount: v.number(),
+    plateCost: v.optional(v.number()),
     menuPackage: v.optional(v.string()),
     totalAmount: v.number(),
     advance: v.number(),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // check if hall is already booked on that date
-    const existing = await ctx.db
+    const slot = args.timeSlot || "full_day";
+
+    // ── Time-slot aware conflict check ──────────────────────────
+    const sameDayBookings = await ctx.db
       .query("banquetBookings")
       .filter((q) =>
         q.and(
@@ -112,28 +133,49 @@ export const createBanquetBooking = mutation({
           q.neq(q.field("status"), "cancelled")
         )
       )
-      .first();
+      .collect();
 
-    if (existing) throw new Error("Hall already booked on this date");
+    for (const b of sameDayBookings) {
+      if (slotsConflict(slot, b.timeSlot)) {
+        const existSlot = b.timeSlot || "full_day";
+        throw new Error(
+          `Hall already booked on ${args.eventDate} (${existSlot} slot) for "${b.eventName}". ` +
+          `Try the ${existSlot === "morning" ? "evening" : "morning"} slot or a different date.`
+        );
+      }
+    }
 
-    return await ctx.db.insert("banquetBookings", {
-      ...args,
+    return ctx.db.insert("banquetBookings", {
+      hallId: args.hallId,
+      eventName: args.eventName,
+      eventType: args.eventType,
+      eventDate: args.eventDate,
+      timeSlot: slot,
+      guestName: args.guestName,
+      guestPhone: args.guestPhone,
+      guestCount: args.guestCount,
+      plateCost: args.plateCost,
+      menuPackage: args.menuPackage,
+      totalAmount: args.totalAmount,
+      advance: args.advance,
       balance: args.totalAmount - args.advance,
       status: "confirmed",
+      notes: args.notes,
     });
   },
 });
 
-// UPDATE BANQUET BOOKING
 export const updateBanquetBooking = mutation({
   args: {
     bookingId: v.id("banquetBookings"),
     eventName: v.optional(v.string()),
     eventType: v.optional(v.string()),
     eventDate: v.optional(v.string()),
+    timeSlot: v.optional(v.string()),
     guestName: v.optional(v.string()),
     guestPhone: v.optional(v.string()),
     guestCount: v.optional(v.number()),
+    plateCost: v.optional(v.number()),
     menuPackage: v.optional(v.string()),
     totalAmount: v.optional(v.number()),
     advance: v.optional(v.number()),
@@ -144,31 +186,24 @@ export const updateBanquetBooking = mutation({
     const booking = await ctx.db.get(bookingId);
     if (!booking) throw new Error("Booking not found");
 
-    // recalculate balance if amount or advance changed
     const totalAmount = updates.totalAmount ?? booking.totalAmount;
     const advance = updates.advance ?? booking.advance;
 
-    return await ctx.db.patch(bookingId, {
-      ...updates,
-      balance: totalAmount - advance,
-    });
+    return ctx.db.patch(bookingId, { ...updates, balance: totalAmount - advance });
   },
 });
 
-// CANCEL BANQUET BOOKING
 export const cancelBanquetBooking = mutation({
   args: { bookingId: v.id("banquetBookings") },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
-    return await ctx.db.patch(args.bookingId, { status: "cancelled" });
+    return ctx.db.patch(args.bookingId, { status: "cancelled" });
   },
 });
 
-// COMPLETE BANQUET BOOKING
 export const completeBanquetBooking = mutation({
   args: { bookingId: v.id("banquetBookings") },
-  handler: async (ctx, args) => {
-    return await ctx.db.patch(args.bookingId, { status: "completed" });
-  },
+  handler: async (ctx, args) =>
+    ctx.db.patch(args.bookingId, { status: "completed" }),
 });

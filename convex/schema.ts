@@ -5,70 +5,96 @@ export default defineSchema({
 
   // ROOMS
   rooms: defineTable({
-    roomNumber: v.string(),        // "101", "102" etc
-    category: v.string(),          // "Luxury", "Premium", "Suite"
-    floor: v.number(),             // 1, 2, 3
-    tariff: v.number(),            // base price per night
+    roomNumber: v.string(),
+    category: v.string(),
+    floor: v.number(),
+    tariff: v.number(),
     status: v.string(),            // "available", "occupied", "pending_checkout"
-    isActive: v.boolean(),         // admin can deactivate
+    isActive: v.boolean(),
     description: v.optional(v.string()),
+    image: v.optional(v.string()),  // hero / primary image
+    images: v.optional(v.array(v.string())), // gallery images
     amenities: v.optional(v.array(v.string())),
   }),
 
   // ROOM BOOKINGS
   bookings: defineTable({
     roomId: v.id("rooms"),
+    guestId: v.optional(v.id("guests")),         // linked guest profile
+    folioNumber: v.optional(v.string()),          // "FLO-20250412-00001"
     guestName: v.string(),
     guestPhone: v.string(),
-    idType: v.optional(v.string()),       // Aadhar, Passport etc
+    idType: v.optional(v.string()),
     idNumber: v.optional(v.string()),
-    checkIn: v.string(),                  // "2024-11-14"
+    checkIn: v.string(),
     checkOut: v.string(),
-    tariff: v.number(),                   // tariff at time of booking
+    tariff: v.number(),
     advance: v.number(),
     balance: v.number(),
     totalAmount: v.number(),
-    status: v.string(),          // "confirmed", "checked_in", "checked_out", "cancelled"
+    status: v.string(),            // "confirmed","checked_in","checked_out","cancelled"
     gstBill: v.optional(v.boolean()),
     notes: v.optional(v.string()),
-  }),
+    source: v.optional(v.string()),              // "walk_in","phone","ota"
+  }).index("by_room", ["roomId"]),
 
-  // MENU ITEMS (for both restaurant and cafe)
+  // GUEST PROFILES (repeat guest history)
+  guests: defineTable({
+    name: v.string(),
+    phone: v.string(),
+    idType: v.optional(v.string()),
+    idNumber: v.optional(v.string()),
+    totalVisits: v.number(),
+    totalSpend: v.number(),
+  }).index("by_phone", ["phone"]),
+
+  // MENU ITEMS
   menuItems: defineTable({
     name: v.string(),
-    category: v.string(),         // "Food", "Beverage"
-    subCategory: v.string(),      // "Starters", "Main Course", "Coffee", "Tea" etc
+    category: v.string(),
+    subCategory: v.string(),
     price: v.number(),
-    outlet: v.string(),           // "restaurant", "cafe"
+    outlet: v.string(),
     isAvailable: v.boolean(),
     description: v.optional(v.string()),
+    image: v.optional(v.string()),
   }),
 
   // RESTAURANT / CAFE ORDERS
   orders: defineTable({
-    outlet: v.string(),            // "restaurant", "cafe"
-    tableNumber: v.string(),       // "Table 1", "Table 2"
-    roomId: v.optional(v.id("rooms")),   // if order linked to a room
+    outlet: v.string(),
+    tableNumber: v.string(),
+    roomId: v.optional(v.id("rooms")),
+    kotNumber: v.optional(v.string()),           // "KOT-2025-0001"
+    takenById: v.optional(v.id("staff")),        // who created the order
     items: v.array(v.object({
       menuItemId: v.id("menuItems"),
       name: v.string(),
       price: v.number(),
       quantity: v.number(),
-      category: v.string(),        // to calculate GST
+      category: v.string(),
+      notes: v.optional(v.string()),
+      course: v.optional(v.string()),
     })),
     subtotal: v.number(),
     gstAmount: v.number(),
     totalAmount: v.number(),
-    status: v.string(),            // "kot_generated", "billed", "paid"
+    status: v.string(),
     kotGenerated: v.boolean(),
     createdAt: v.string(),
-  }),
+  })
+    .index("by_outlet_table", ["outlet", "tableNumber"])
+    .index("by_room", ["roomId"])
+    .index("by_status", ["status"])
+    .index("by_created_at", ["createdAt"]),
 
-  // BANQUET HALLS
   banquetHalls: defineTable({
-    name: v.string(),              // "Hall A", "Hall B" etc
+    name: v.string(),
+    type: v.string(),
     capacity: v.number(),
+    price: v.optional(v.number()),
     description: v.optional(v.string()),
+    image: v.optional(v.string()),
     isActive: v.boolean(),
   }),
 
@@ -76,32 +102,42 @@ export default defineSchema({
   banquetBookings: defineTable({
     hallId: v.id("banquetHalls"),
     eventName: v.string(),
-    eventType: v.string(),         // "Wedding", "Corporate", "Birthday" etc
+    eventType: v.string(),
     eventDate: v.string(),
+    timeSlot: v.optional(v.string()),            // "morning","evening","full_day"
     guestName: v.string(),
     guestPhone: v.string(),
     guestCount: v.number(),
+    plateCost: v.optional(v.number()),
     menuPackage: v.optional(v.string()),
     totalAmount: v.number(),
     advance: v.number(),
     balance: v.number(),
-    status: v.string(),            // "confirmed", "completed", "cancelled"
+    status: v.string(),
     notes: v.optional(v.string()),
   }),
 
   // FINAL BILLS
   bills: defineTable({
-    billType: v.string(),          // "room", "restaurant", "cafe", "banquet"
-    referenceId: v.string(),       // bookingId or orderId or banquetBookingId
+    billType: v.string(),
+    referenceId: v.string(),
     guestName: v.string(),
     isGstBill: v.boolean(),
     gstin: v.optional(v.string()),
     subtotal: v.number(),
+    discountAmount: v.optional(v.number()),
+    serviceCharge: v.optional(v.number()),
+    housekeepingCharge: v.optional(v.number()),
+    extraCharge: v.optional(v.number()),
     cgst: v.number(),
     sgst: v.number(),
     totalAmount: v.number(),
-    paymentMethod: v.optional(v.string()),  // "cash", "card", "upi"
-    status: v.string(),            // "generated", "paid"
+    paymentMethod: v.optional(v.string()),
+    splitPayments: v.optional(v.array(v.object({
+      method: v.string(),
+      amount: v.number(),
+    }))),
+    status: v.string(),
     createdAt: v.string(),
   }),
 
@@ -114,6 +150,55 @@ export default defineSchema({
     gstin: v.string(),
     checkInTime: v.string(),
     checkOutTime: v.string(),
+    roomGst: v.optional(v.number()),
+    foodGst: v.optional(v.number()),
+    alGst: v.optional(v.number()),
+    autoCheckoutReminders: v.optional(v.boolean()),
+    requireIdUpload: v.optional(v.boolean()),
+    defaultKitchenTab: v.optional(v.string()), // "restaurant" | "cafe"
+    defaultBillingTab: v.optional(v.string()), // "rooms" | "tables"
+    staffTypes: v.optional(v.array(v.string())),
   }),
+
+  // STAFF (RBAC)
+  staff: defineTable({
+    name: v.string(),
+    pin: v.string(),               // SHA-256 hashed PIN
+    role: v.string(),
+    isActive: v.boolean(),
+    failedAttempts: v.optional(v.number()),  // brute-force counter
+    lockedUntil: v.optional(v.number()),     // ms timestamp; null = not locked
+  }).index("by_pin", ["pin"]),
+
+  // AUTH SESSIONS
+  authSessions: defineTable({
+    token: v.string(),
+    staffId: v.id("staff"),
+    expiresAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_staff", ["staffId"]),
+
+  // ROLE CONFIG (Dynamic Permissions)
+  roleConfig: defineTable({
+    role: v.string(),
+    allowedPaths: v.array(v.string()),
+  }).index("by_role", ["role"]),
+
+  // SEQUENTIAL COUNTERS (KOT numbers, folio numbers)
+  counters: defineTable({
+    name: v.string(),              // "kot", "folio"
+    value: v.number(),             // current counter value
+  }).index("by_name", ["name"]),
+
+  // AUDIT LOG
+  auditLog: defineTable({
+    staffId: v.id("staff"),
+    action: v.string(),            // "login","logout","create_order","checkin","checkout"
+    details: v.optional(v.string()),
+    timestamp: v.number(),
+  })
+    .index("by_timestamp", ["timestamp"])
+    .index("by_staff", ["staffId"]),
 
 });

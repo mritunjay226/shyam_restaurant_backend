@@ -1,57 +1,92 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-// GET ALL BOOKINGS
+// ─────────────────────────────────────────────────────────────────
+// FOLIO NUMBER HELPER
+// ─────────────────────────────────────────────────────────────────
+async function nextFolio(ctx: any): Promise<string> {
+  const existing = await ctx.db
+    .query("counters")
+    .withIndex("by_name", (q: any) => q.eq("name", "folio"))
+    .first();
+
+  let n: number;
+  if (existing) {
+    n = existing.value + 1;
+    await ctx.db.patch(existing._id, { value: n });
+  } else {
+    n = 1;
+    await ctx.db.insert("counters", { name: "folio", value: 1 });
+  }
+
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  return `FLO-${today}-${String(n).padStart(5, "0")}`;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// DATE OVERLAP CHECK  — returns true if [a1,a2) overlaps [b1,b2)
+// Dates are "YYYY-MM-DD" strings — lexicographic compare works fine
+// ─────────────────────────────────────────────────────────────────
+function overlaps(
+  newIn: string, newOut: string,
+  existIn: string, existOut: string
+): boolean {
+  return newIn < existOut && newOut > existIn;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// QUERIES
+// ─────────────────────────────────────────────────────────────────
+
 export const getAllBookings = query({
-  handler: async (ctx) => {
-    return await ctx.db.query("bookings").collect();
-  },
+  handler: async (ctx) => ctx.db.query("bookings").collect(),
 });
 
-// GET BOOKINGS BY ROOM
 export const getBookingsByRoom = query({
   args: { roomId: v.id("rooms") },
-  handler: async (ctx, args) => {
-    return await ctx.db
+  handler: async (ctx, args) =>
+    ctx.db
       .query("bookings")
-      .filter((q) => q.eq(q.field("roomId"), args.roomId))
-      .collect();
-  },
+      .withIndex("by_room", (q) => q.eq("roomId", args.roomId))
+      .collect(),
 });
 
-// GET TODAY'S ARRIVALS
 export const getTodayArrivals = query({
   args: { today: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
+  handler: async (ctx, args) =>
+    ctx.db
       .query("bookings")
       .filter((q) =>
-        q.and(
-          q.eq(q.field("checkIn"), args.today),
-          q.eq(q.field("status"), "confirmed")
-        )
+        q.and(q.eq(q.field("checkIn"), args.today), q.eq(q.field("status"), "confirmed"))
       )
-      .collect();
-  },
+      .collect(),
 });
 
-// GET TODAY'S DEPARTURES
 export const getTodayDepartures = query({
   args: { today: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
+  handler: async (ctx, args) =>
+    ctx.db
       .query("bookings")
       .filter((q) =>
-        q.and(
-          q.eq(q.field("checkOut"), args.today),
-          q.eq(q.field("status"), "checked_in")
-        )
+        q.and(q.eq(q.field("checkOut"), args.today), q.eq(q.field("status"), "checked_in"))
       )
-      .collect();
-  },
+      .collect(),
 });
 
-// CREATE BOOKING
+/** Get or look up guest history by phone number */
+export const getGuestByPhone = query({
+  args: { phone: v.string() },
+  handler: async (ctx, args) =>
+    ctx.db
+      .query("guests")
+      .withIndex("by_phone", (q) => q.eq("phone", args.phone))
+      .first(),
+});
+
+// ─────────────────────────────────────────────────────────────────
+// MUTATIONS
+// ─────────────────────────────────────────────────────────────────
+
 export const createBooking = mutation({
   args: {
     roomId: v.id("rooms"),
@@ -66,75 +101,126 @@ export const createBooking = mutation({
     totalAmount: v.number(),
     gstBill: v.optional(v.boolean()),
     notes: v.optional(v.string()),
+    source: v.optional(v.string()),   // "walk_in", "phone", "ota"
   },
   handler: async (ctx, args) => {
-    // update room status to occupied
+    // ── 1. DATE OVERLAP CHECK ──────────────────────────────────────
+    // Find all active bookings for this room (not cancelled/checked_out)
+    const activeBookings = await ctx.db
+      .query("bookings")
+      .withIndex("by_room", (q) => q.eq("roomId", args.roomId))
+      .filter((q) =>
+        q.and(
+          q.neq(q.field("status"), "cancelled"),
+          q.neq(q.field("status"), "checked_out")
+        )
+      )
+      .collect();
+
+    for (const b of activeBookings) {
+      if (overlaps(args.checkIn, args.checkOut, b.checkIn, b.checkOut)) {
+        throw new Error(
+          `Room is already booked from ${b.checkIn} to ${b.checkOut} (${b.guestName}). Please choose different dates.`
+        );
+      }
+    }
+
+    // ── 2. GUEST PROFILE (upsert) ──────────────────────────────────
+    let guestId: any;
+    const existingGuest = await ctx.db
+      .query("guests")
+      .withIndex("by_phone", (q) => q.eq("phone", args.guestPhone))
+      .first();
+
+    if (existingGuest) {
+      // Update visit count and spend
+      await ctx.db.patch(existingGuest._id, {
+        totalVisits: existingGuest.totalVisits + 1,
+        totalSpend: existingGuest.totalSpend + args.totalAmount,
+        // Update ID details if provided
+        ...(args.idType ? { idType: args.idType } : {}),
+        ...(args.idNumber ? { idNumber: args.idNumber } : {}),
+      });
+      guestId = existingGuest._id;
+    } else {
+      guestId = await ctx.db.insert("guests", {
+        name: args.guestName,
+        phone: args.guestPhone,
+        idType: args.idType,
+        idNumber: args.idNumber,
+        totalVisits: 1,
+        totalSpend: args.totalAmount,
+      });
+    }
+
+    // ── 3. FOLIO NUMBER ───────────────────────────────────────────
+    const folioNumber = await nextFolio(ctx);
+
+    // ── 4. UPDATE ROOM STATUS ─────────────────────────────────────
     await ctx.db.patch(args.roomId, { status: "occupied" });
 
-    return await ctx.db.insert("bookings", {
-      ...args,
+    // ── 5. CREATE BOOKING ─────────────────────────────────────────
+    return ctx.db.insert("bookings", {
+      roomId: args.roomId,
+      guestId,
+      folioNumber,
+      guestName: args.guestName,
+      guestPhone: args.guestPhone,
+      idType: args.idType,
+      idNumber: args.idNumber,
+      checkIn: args.checkIn,
+      checkOut: args.checkOut,
+      tariff: args.tariff,
+      advance: args.advance,
       balance: args.totalAmount - args.advance,
+      totalAmount: args.totalAmount,
       status: "confirmed",
+      gstBill: args.gstBill,
+      notes: args.notes,
+      source: args.source ?? "walk_in",
     });
   },
 });
 
-// CHECK IN
 export const checkIn = mutation({
   args: { bookingId: v.id("bookings") },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
-
     await ctx.db.patch(args.bookingId, { status: "checked_in" });
     await ctx.db.patch(booking.roomId, { status: "occupied" });
-
     return { success: true };
   },
 });
 
-// CHECK OUT
 export const checkOut = mutation({
-  args: {
-    bookingId: v.id("bookings"),
-    paymentMethod: v.optional(v.string()),
-  },
+  args: { bookingId: v.id("bookings"), paymentMethod: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
-
     await ctx.db.patch(args.bookingId, { status: "checked_out" });
-    await ctx.db.patch(booking.roomId, { status: "available" });
-
+    await ctx.db.patch(booking.roomId, { status: "dirty" });
     return { success: true };
   },
 });
 
-// CANCEL BOOKING
 export const cancelBooking = mutation({
   args: { bookingId: v.id("bookings") },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
-
     await ctx.db.patch(args.bookingId, { status: "cancelled" });
     await ctx.db.patch(booking.roomId, { status: "available" });
-
     return { success: true };
   },
 });
 
-// UPDATE ADVANCE PAYMENT
 export const updateAdvance = mutation({
-  args: {
-    bookingId: v.id("bookings"),
-    advance: v.number(),
-  },
+  args: { bookingId: v.id("bookings"), advance: v.number() },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
-
-    return await ctx.db.patch(args.bookingId, {
+    return ctx.db.patch(args.bookingId, {
       advance: args.advance,
       balance: booking.totalAmount - args.advance,
     });

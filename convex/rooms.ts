@@ -35,6 +35,8 @@ export const addRoom = mutation({
     floor: v.number(),
     tariff: v.number(),
     description: v.optional(v.string()),
+    image: v.optional(v.string()),
+    images: v.optional(v.array(v.string())),
     amenities: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
@@ -43,6 +45,23 @@ export const addRoom = mutation({
       status: "available",
       isActive: true,
     });
+  },
+});
+
+// UPDATE ROOM (admin)
+export const updateRoom = mutation({
+  args: {
+    roomId: v.id("rooms"),
+    category: v.optional(v.string()),
+    tariff: v.optional(v.number()),
+    description: v.optional(v.string()),
+    image: v.optional(v.string()),
+    images: v.optional(v.array(v.string())),
+    amenities: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const { roomId, ...updates } = args;
+    return await ctx.db.patch(roomId, updates);
   },
 });
 
@@ -76,4 +95,4 @@ export const updateRoomStatus = mutation({
   handler: async (ctx, args) => {
     return await ctx.db.patch(args.roomId, { status: args.status });
   },
-});
+});

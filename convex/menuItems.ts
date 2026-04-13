@@ -28,6 +28,7 @@ export const addMenuItem = mutation({
     price: v.number(),
     outlet: v.string(),
     description: v.optional(v.string()),
+    image: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("menuItems", {
@@ -69,6 +70,7 @@ export const updateMenuItem = mutation({
     category: v.optional(v.string()),
     subCategory: v.optional(v.string()),
     description: v.optional(v.string()),
+    image: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { menuItemId, ...updates } = args;
