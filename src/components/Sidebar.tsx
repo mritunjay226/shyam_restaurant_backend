@@ -52,7 +52,14 @@ export function SidebarContent({ isMobile = false }) {
   const roleConfigs = useQuery(api.auth.getRolePermissions) || [];
   
   const userAllowedPaths = roleConfigs.find(c => c.role === staff?.role)?.allowedPaths || ["/"];
-
+  
+  const [isElectron, setIsElectron] = useState(false);
+  
+    useEffect(() => {
+      if (typeof window !== "undefined" && window.electronAPI) {
+        setIsElectron(true);
+      }
+    }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -74,7 +81,7 @@ export function SidebarContent({ isMobile = false }) {
   );
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white" style={{paddingTop: isElectron ? "36px" : "0px"}}>
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 h-[64px] border-b border-gray-100 shrink-0">
         <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center text-white font-bold text-sm tracking-wide shrink-0 shadow-sm">

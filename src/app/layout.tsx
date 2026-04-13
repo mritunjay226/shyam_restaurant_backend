@@ -5,8 +5,9 @@ import { ConvexClientProvider } from "@/providers/ConvexClientProvider";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "sonner";
+import { TitleBar } from "../components/titleBar";
+import { ElectronBodyPadding } from "@/components/electronBodyPadding";
 
-// Wire as CSS variables so --font-display and --font-body tokens resolve
 const cormorant = Cormorant_Garamond({
   weight: ["300", "400", "500", "600", "700"],
   subsets: ["latin"],
@@ -48,16 +49,24 @@ export default function RootLayout({
       lang="en"
       className={cn("h-full antialiased", cormorant.variable, dmSans.variable)}
       style={{
-        // Map font variables to our design tokens
         ["--font-display" as string]: "var(--font-cormorant)",
         ["--font-body" as string]: "var(--font-dm-sans)",
       } as React.CSSProperties}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground" style={{ fontFamily: "var(--font-dm-sans), system-ui, sans-serif" }}>
+      <body
+        className="min-h-full flex flex-col bg-background text-foreground"
+        style={{ fontFamily: "var(--font-dm-sans), system-ui, sans-serif" }}
+      >
         <ConvexClientProvider>
           <TooltipProvider>
-            <Toaster richColors position="top-right" />
-            {children}
+            {/* Fixed titlebar — only visible in Electron, invisible in browser */}
+            <TitleBar />
+
+            {/* Pushes ALL content down by 36px in Electron only, does nothing in browser */}
+            <ElectronBodyPadding>
+              <Toaster richColors position="top-right" />
+              {children}
+            </ElectronBodyPadding>
           </TooltipProvider>
         </ConvexClientProvider>
       </body>
