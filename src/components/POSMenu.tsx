@@ -23,11 +23,252 @@ import {
 
 type MenuItemType = Doc<"banquetMenuItems"> & { category?: string };
 
+// ── Bill Preview State Type ──
+type BillPreviewState = {
+  tableNo: string;
+  subtotal: number;
+  isGstBill: boolean;
+  gstin: string;
+  paymentMethod: string;
+  discount: string;
+};
+
+// ── Individual Table Bill Card ──
+function TableBillCard({
+  outlet,
+  tableNo,
+  orders,
+  generateTableBill,
+}: {
+  outlet: string;
+  tableNo: string;
+  orders: any[];
+  generateTableBill: any;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isGstBill, setIsGstBill] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [discount, setDiscount] = useState("");
+  const [gstin, setGstin] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const subtotal = orders.reduce((sum: number, o: any) => sum + o.subtotal, 0);
+  const discountAmt = parseFloat(discount) || 0;
+  const afterDiscount = Math.max(0, subtotal - discountAmt);
+  const cgst = isGstBill ? Math.round(afterDiscount * 0.06 * 100) / 100 : 0;
+  const sgst = isGstBill ? Math.round(afterDiscount * 0.06 * 100) / 100 : 0;
+  const grandTotal = Math.round((afterDiscount + cgst + sgst) * 100) / 100;
+
+  // Collect all items across KOTs for itemized display
+  const allItems = orders.flatMap((o: any) =>
+    (o.items || []).map((item: any) => ({
+      ...item,
+      kotNumber: o.kotNumber,
+    }))
+  );
+
+  const handleConfirmBill = async () => {
+    setIsGenerating(true);
+    try {
+      await generateTableBill({
+        outlet,
+        tableNumber: tableNo,
+        paymentMethod,
+        isGstBill,
+        ...(gstin.trim() && { gstin: gstin.trim() }),
+        ...(discountAmt > 0 && { discountAmount: discountAmt }),
+      });
+      toast.success(`✅ Bill generated for ${tableNo} · ₹${grandTotal.toLocaleString()}`);
+      setIsExpanded(false);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to generate bill");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const PAYMENT_METHODS = [
+    { value: "cash", label: "Cash", emoji: "💵" },
+    { value: "upi", label: "UPI", emoji: "📱" },
+    { value: "card", label: "Card", emoji: "💳" },
+  ];
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+      {/* Table Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-50">
+        <div>
+          <h3 className="font-bold text-gray-900">{tableNo}</h3>
+          <p className="text-[10px] text-gray-400 font-bold tracking-widest">{orders.length} ACTIVE KOT(S)</p>
+        </div>
+        <div className="text-right">
+          <p className="font-black text-gray-900">₹{subtotal.toLocaleString()}</p>
+          <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-md text-[9px] font-bold uppercase">Unbilled</span>
+        </div>
+      </div>
+
+      {/* KOT Summary Pills */}
+      <div className="px-4 py-2 space-y-1.5">
+        {orders.map((o: any) => (
+          <div key={o._id} className="flex justify-between items-center text-xs text-gray-500 bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-100">
+            <span className="font-semibold">{o.kotNumber}</span>
+            <span>₹{o.subtotal?.toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Bill Preview Panel */}
+      {isExpanded && (
+        <div className="border-t border-gray-100 mx-4 mb-4 mt-2 pt-4 space-y-4">
+
+          {/* Itemized Items */}
+          {allItems.length > 0 && (
+            <div>
+              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">Order Items</p>
+              <div className="space-y-1 max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                {allItems.map((item: any, idx: number) => (
+                  <div key={idx} className="flex justify-between items-center text-xs py-1 border-b border-gray-50">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-gray-800 font-medium truncate block">{item.name}</span>
+                      <span className="text-gray-400">×{item.quantity} @ ₹{item.price}</span>
+                    </div>
+                    <span className="font-semibold text-gray-900 shrink-0 ml-2">
+                      ₹{(item.price * item.quantity).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* GST Toggle */}
+          <div className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
+            <div>
+              <p className="text-xs font-bold text-gray-700">GST Invoice</p>
+              <p className="text-[10px] text-gray-400">CGST 6% + SGST 6% on subtotal</p>
+            </div>
+            <Switch checked={isGstBill} onCheckedChange={setIsGstBill} />
+          </div>
+
+          {/* GSTIN (only if GST bill) */}
+          {isGstBill && (
+            <div>
+              <Label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 block">GSTIN (Optional)</Label>
+              <Input
+                value={gstin}
+                onChange={(e) => setGstin(e.target.value)}
+                placeholder="e.g. 07AABCU9603R1ZV"
+                className="h-8 text-xs rounded-xl"
+              />
+            </div>
+          )}
+
+          {/* Discount */}
+          <div>
+            <Label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Discount (₹)</Label>
+            <Input
+              type="number"
+              min={0}
+              value={discount}
+              onChange={(e) => setDiscount(e.target.value)}
+              placeholder="0"
+              className="h-8 text-xs rounded-xl"
+            />
+          </div>
+
+          {/* Payment Method */}
+          <div>
+            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">Payment Method</p>
+            <div className="grid grid-cols-3 gap-2">
+              {PAYMENT_METHODS.map((m) => (
+                <button
+                  key={m.value}
+                  onClick={() => setPaymentMethod(m.value)}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 py-2 rounded-xl border text-xs font-bold transition-all",
+                    paymentMethod === m.value
+                      ? "bg-gray-900 text-white border-gray-900"
+                      : "bg-gray-50 text-gray-500 border-gray-100 hover:border-gray-300"
+                  )}
+                >
+                  <span className="text-base">{m.emoji}</span>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Bill Breakdown */}
+          <div className="bg-gray-50 rounded-xl p-3 space-y-2 text-xs">
+            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3">Bill Summary</p>
+            <div className="flex justify-between text-gray-600">
+              <span>Subtotal</span>
+              <span>₹{subtotal.toLocaleString()}</span>
+            </div>
+            {discountAmt > 0 && (
+              <div className="flex justify-between text-emerald-600">
+                <span>Discount</span>
+                <span>− ₹{discountAmt.toLocaleString()}</span>
+              </div>
+            )}
+            {isGstBill && (
+              <>
+                <div className="flex justify-between text-gray-600">
+                  <span>CGST @ 6%</span>
+                  <span>₹{cgst.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>SGST @ 6%</span>
+                  <span>₹{sgst.toFixed(2)}</span>
+                </div>
+              </>
+            )}
+            <div className="flex justify-between font-black text-gray-900 pt-2 border-t border-gray-200 text-sm">
+              <span>Grand Total</span>
+              <span>₹{grandTotal.toLocaleString()}</span>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsExpanded(false)}
+              className="flex-1 h-9 text-xs rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmBill}
+              disabled={isGenerating}
+              className="flex-1 h-9 bg-gray-900 text-white hover:bg-gray-700 font-bold text-xs rounded-xl uppercase"
+            >
+              {isGenerating ? "Generating..." : `Confirm · ₹${grandTotal.toLocaleString()}`}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Generate Bill Trigger */}
+      {!isExpanded && (
+        <div className="px-4 pb-4">
+          <Button
+            onClick={() => setIsExpanded(true)}
+            className="w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-100 transition-colors font-bold h-9 rounded-xl text-xs uppercase mt-2"
+          >
+            Generate Bill
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Local Active Orders Component ──
 function ActiveOrdersList({ outlet }: { outlet: string }) {
   const activeOrders = useQuery(api.orders.getActiveOrdersByOutlet, { outlet });
   const generateTableBill = useMutation(api.billing.generateTableBill);
-  
+
   if (activeOrders === undefined) return <p className="text-center text-sm text-gray-400 mt-10">Loading...</p>;
   if (activeOrders.length === 0) return <p className="text-center text-sm text-gray-400 mt-10">No active KOTs running.</p>;
 
@@ -40,56 +281,17 @@ function ActiveOrdersList({ outlet }: { outlet: string }) {
 
   return (
     <div className="space-y-4">
-      {Object.entries(grouped).map(([tableNo, orders]) => {
-        const total = orders.reduce((sum, o) => sum + o.totalAmount, 0);
-        return (
-          <div key={tableNo} className="bg-white border border-gray-100 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all">
-             <div className="flex items-center justify-between mb-3 border-b border-gray-50 pb-3">
-               <div>
-                 <h3 className="font-bold text-gray-900">{tableNo}</h3>
-                 <p className="text-[10px] text-gray-400 font-bold tracking-widest">{orders.length} ACTIVE KOT(S)</p>
-               </div>
-               <div className="text-right">
-                 <p className="font-black text-gray-900">₹{total.toLocaleString()}</p>
-                 <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-md text-[9px] font-bold uppercase shrink-0">Unbilled</span>
-               </div>
-             </div>
-             
-             {/* Show KOT details briefly */}
-             <div className="space-y-2 mb-3">
-               {orders.map(o => (
-                  <div key={o._id} className="flex justify-between items-center text-xs text-gray-500 bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-100">
-                    <span className="font-semibold">{o.kotNumber}</span>
-                    <span>₹{o.totalAmount}</span>
-                  </div>
-               ))}
-             </div>
-
-             <div className="flex gap-2">
-                <Button 
-                  onClick={async () => {
-                    try {
-                      await generateTableBill({
-                        outlet,
-                        tableNumber: tableNo,
-                        paymentMethod: "cash",
-                        isGstBill: true,
-                      });
-                      toast.success(`Bill generated for ${tableNo}`);
-                    } catch (e: any) {
-                      toast.error(e.message || "Failed to generate bill");
-                    }
-                  }}
-                  className="w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-100 transition-colors font-bold h-9 rounded-xl text-xs uppercase"
-                >
-                  Generate Bill
-                </Button>
-             </div>
-          </div>
-        )
-      })}
+      {Object.entries(grouped).map(([tableNo, orders]) => (
+        <TableBillCard
+          key={tableNo}
+          outlet={outlet}
+          tableNo={tableNo}
+          orders={orders}
+          generateTableBill={generateTableBill}
+        />
+      ))}
     </div>
-  )
+  );
 }
 
 
