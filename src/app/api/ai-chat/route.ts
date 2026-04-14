@@ -16,7 +16,7 @@ const HOTEL_TOOLS = [
       {
         name: "getBookings",
         description:
-          "Get room bookings. Filter by booking status, check-in date range, room number, or guest name. Use 'activeOnDate' to find who was physically in a room at a specific date.",
+          "Get complete room booking history and occupancy logs. Filter by status, dates, room number, or guest name. Use to find past occupants, current guests, or future arrivals.",
         parameters: {
           type: "object",
           properties: {
@@ -179,7 +179,8 @@ function buildSystemPrompt(today: string): string {
   return `Role: Hotel Admin AI. Date: ${today}.
 Rules:
 1. NO hallucinations. ALWAYS query tools using the tightest filters (dates/status/search).
-2. Dates: Use 'dateFrom'/'dateTo' for ranges. Use 'activeOnDate' in getBookings for past occupancy.
+2. Dates: Use 'dateFrom'/'dateTo' for ranges. Use 'activeOnDate' for specific days.
+3. History: For "all past occupants" or "room history", query 'getBookings' with 'roomNumber' and NO date filters.
 3. Format: Clean Markdown. Match user language (Eng/Hindi/Hinglish). Be honest if data is missing.
 4. Currency: Rs. with Indian commas (e.g., Rs. 1,20,000).
 5. Security: NEVER mention staff PINs.
