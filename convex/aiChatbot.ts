@@ -72,19 +72,41 @@ export const getRoomsSummary = query({
 
 export const getBookings = query({
   args: {
-    token:    v.string(),
-    status:   v.optional(v.string()),  // "confirmed" | "checked_in" | "checked_out" | "cancelled"
-    dateFrom: v.optional(v.string()),  // YYYY-MM-DD  (filters on checkIn)
-    dateTo:   v.optional(v.string()),
-    limit:    v.optional(v.number()),
+    token:        v.string(),
+    status:       v.optional(v.string()),  // "confirmed" | "checked_in" | "checked_out" | "cancelled"
+    dateFrom:     v.optional(v.string()),  // YYYY-MM-DD (filters on checkIn)
+    dateTo:       v.optional(v.string()),
+    roomNumber:   v.optional(v.string()),
+    guestName:    v.optional(v.string()),
+    activeOnDate: v.optional(v.string()),  // Who was in the room AT THIS DATE (checkIn <= date < checkOut)
+    limit:        v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await verifyAdmin(ctx, args.token);
+    
+    let targetRoomId: any = undefined;
+    if (args.roomNumber) {
+      const room = await ctx.db
+        .query("rooms")
+        .withIndex("by_roomNumber", (q: any) => q.eq("roomNumber", args.roomNumber))
+        .first();
+      if (!room) return []; // Room not found
+      targetRoomId = room._id;
+    }
+
     let results = await ctx.db.query("bookings").order("desc").collect();
 
-    if (args.status)   results = results.filter((b: any) => b.status === args.status);
-    if (args.dateFrom) results = results.filter((b: any) => b.checkIn >= args.dateFrom!);
-    if (args.dateTo)   results = results.filter((b: any) => b.checkIn <= args.dateTo!);
+    if (targetRoomId)    results = results.filter((b: any) => b.roomId === targetRoomId);
+    if (args.status)      results = results.filter((b: any) => b.status === args.status);
+    if (args.dateFrom)    results = results.filter((b: any) => b.checkIn >= args.dateFrom!);
+    if (args.dateTo)      results = results.filter((b: any) => b.checkIn <= args.dateTo!);
+    if (args.guestName)   results = results.filter((b: any) => b.guestName.toLowerCase().includes(args.guestName!.toLowerCase()));
+    
+    if (args.activeOnDate) {
+      results = results.filter((b: any) => {
+        return b.checkIn <= args.activeOnDate! && b.checkOut > args.activeOnDate!;
+      });
+    }
 
     return results.slice(0, args.limit ?? 50);
   },
@@ -107,7 +129,7 @@ export const getGuests = query({
       );
     }
 
-    return guests.slice(0, args.limit ?? 30);
+    return guests.slice(0, args.limit ?? 100);
   },
 });
 

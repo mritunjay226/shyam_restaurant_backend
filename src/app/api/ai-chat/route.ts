@@ -1,24 +1,9 @@
 // app/api/ai-chat/route.ts
-//
-// Server-side route — Gemini key never reaches the browser.
-//
-// .env.local:
-//   GEMINI_KEY=your_key_here          ← no NEXT_PUBLIC_ prefix
-//   CONVEX_URL=https://xxx.convex.cloud
-//
-// Called by adminAiChatbot.tsx with:
-//   POST /api/ai-chat
-//   body: { token, history, userMessage }
-
 import { NextRequest, NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../convex/_generated/api";
 
-// ─── Convex HTTP client (server-side only) ────────────────────────
 const convex = new ConvexHttpClient(process.env.CONVEX_URL!);
-
-// ─── Gemini tool definitions ──────────────────────────────────────
-// Gemini reads these and decides which tool(s) to call.
 
 const HOTEL_TOOLS = [
   {
@@ -31,7 +16,7 @@ const HOTEL_TOOLS = [
       {
         name: "getBookings",
         description:
-          "Get room bookings. Filter by booking status and/or check-in date range. Use for check-in/check-out queries, arrival/departure lists, and booking history.",
+          "Get room bookings. Filter by booking status, check-in date range, room number, or guest name. Use 'activeOnDate' to find who was physically in a room at a specific date.",
         parameters: {
           type: "object",
           properties: {
@@ -47,6 +32,18 @@ const HOTEL_TOOLS = [
             dateTo: {
               type: "string",
               description: "End of check-in date range in YYYY-MM-DD format",
+            },
+            roomNumber: {
+              type: "string",
+              description: "Filter by specific room number (e.g. '101')",
+            },
+            guestName: {
+              type: "string",
+              description: "Partial search for guest name",
+            },
+            activeOnDate: {
+              type: "string",
+              description: "Find who was occupying the room on this specific date (YYYY-MM-DD)",
             },
             limit: {
               type: "number",
@@ -178,42 +175,32 @@ const HOTEL_TOOLS = [
   },
 ];
 
-// ─── System prompt ────────────────────────────────────────────────
-// Sent on every request. Contains zero DB data — all data comes
-// through tool calls so the model only loads what it needs.
-
 function buildSystemPrompt(today: string): string {
-  return `You are an intelligent hotel management AI assistant, accessible only to the main admin.
-Today's date: ${today}
+  return `Role: Hotel Admin AI. Date: ${today}.
+Rules:
+1. NO hallucinations. ALWAYS query tools using the tightest filters (dates/status/search).
+2. Dates: Use 'dateFrom'/'dateTo' for ranges. Use 'activeOnDate' in getBookings for past occupancy.
+3. Format: Clean Markdown. Match user language (Eng/Hindi/Hinglish). Be honest if data is missing.
+4. Currency: Rs. with Indian commas (e.g., Rs. 1,20,000).
+5. Security: NEVER mention staff PINs.
 
-## HOW YOU WORK
-You have tools that query the hotel database. Before answering any question that requires live data, call the relevant tool(s) with the tightest filters possible — do NOT fetch everything when you only need a date range or a specific status.
+Tools:
+- getRoomsSummary: Availability/occupancy
+- getBookings: Check-ins/outs, arrivals, occupancy (requires dates/status)
+- getGuests: Lookup by name/phone
+- getBills: Revenue/payments (requires dateFrom, dateTo)
+- getOrders: Rest./cafe orders (requires outlet, dates)
+- getMenuItems: Menus, prices, best sellers
+- getBanquetData: Events/halls (requires dates)
+- getStaff: Staff/roles
+- getAuditLog: Recent activity
+- getHotelSettings: Name, GST, timings
 
-## TOOL SELECTION GUIDE
-- Room availability / occupancy                → getRoomsSummary
-- Check-ins, check-outs, arrival list          → getBookings  (pass status and/or date filters)
-- Guest lookup by name or phone                → getGuests    (pass search parameter)
-- Revenue, bills, payment methods              → getBills     (pass dateFrom + dateTo)
-- Restaurant / cafe orders                     → getOrders    (pass outlet + date filters)
-- Menu, item prices, best sellers              → getMenuItems
-- Banquet events, hall availability            → getBanquetData (pass date filters)
-- Staff members, roles                         → getStaff
-- Who did what, recent activity                → getAuditLog
-- Hotel name, GST rates, timings               → getHotelSettings
-
-## RULES
-- Always call the right tool before answering. Never guess or make up data.
-- When a question covers a date range, always pass dateFrom and dateTo filters — do not fetch all bills or all orders.
-- Respond in clean Markdown: use headings, bullet points, bold text, and tables where appropriate and don't make the responses too short or long if asked for details give details don't take shortcuts.
-- Use ₹ for currency. Format with Indian comma style (₹1,20,000).
-- If someone asks in Hinglish → reply in Hinglish. Hindi → Hindi. English → English.
-- If data is not found for a query, say so honestly.
-- Never reveal or mention staff PINs (they are already stripped from all data).
-`;
-
+MD Table Schemas (Mandatory for lists):
+- Guests: Name | Phone | Total Visits | Total Spend
+- Rooms: Room No. | Category | Floor | Tariff | Current Status
+- Bookings: Guest Name | Room No. | Check-In | Check-Out | Status`;
 }
-
-// ─── Execute tool call against Convex ────────────────────────────
 
 async function executeTool(
   token: string,
@@ -223,21 +210,89 @@ async function executeTool(
   const base = { token, ...toolArgs } as any;
 
   switch (toolName) {
-    case "getRoomsSummary":  return convex.query(api.aiChatbot.getRoomsSummary,  { token });
-    case "getBookings":      return convex.query(api.aiChatbot.getBookings,      base);
-    case "getGuests":        return convex.query(api.aiChatbot.getGuests,        base);
-    case "getBills":         return convex.query(api.aiChatbot.getBills,         base);
-    case "getOrders":        return convex.query(api.aiChatbot.getOrders,        base);
-    case "getMenuItems":     return convex.query(api.aiChatbot.getMenuItems,     { token });
-    case "getBanquetData":   return convex.query(api.aiChatbot.getBanquetData,   base);
-    case "getStaff":         return convex.query(api.aiChatbot.getStaff,         { token });
-    case "getAuditLog":      return convex.query(api.aiChatbot.getAuditLog,      base);
-    case "getHotelSettings": return convex.query(api.aiChatbot.getHotelSettings, { token });
+    case "getRoomsSummary": {
+      const rooms = await convex.query(api.aiChatbot.getRoomsSummary, { token }) as any[];
+      // Strip Convex metadata and irrelevant fields to save massive tokens
+      return rooms.map(r => ({
+        roomNo: r.roomNumber,
+        status: r.status,
+        cat: r.category,
+        tariff: r.tariff
+      }));
+    }
+    case "getGuests": {
+      const guests = await convex.query(api.aiChatbot.getGuests, base) as any[];
+      return guests.map(g => ({
+        name: g.name,
+        phone: g.phone,
+        visits: g.totalVisits,
+        spend: g.totalSpend
+      }));
+    }
+    case "getBookings": {
+      const bookings = await convex.query(api.aiChatbot.getBookings, base) as any[];
+      return bookings.map(b => ({
+        guest: b.guestName,
+        room: b.roomNumber || "N/A",
+        checkIn: b.checkIn,
+        checkOut: b.checkOut,
+        status: b.status,
+        total: b.totalAmount
+      }));
+    }
+    case "getBills": {
+      const bills = await convex.query(api.aiChatbot.getBills, base) as any[];
+      return bills.map(b => ({
+        guest: b.guestName,
+        type: b.billType,
+        total: b.totalAmount,
+        method: b.paymentMethod,
+        date: b.createdAt.slice(0, 10)
+      }));
+    }
+    case "getOrders": {
+      const orders = await convex.query(api.aiChatbot.getOrders, base) as any[];
+      return orders.map(o => ({
+        id: o.kotNumber || "N/A",
+        outlet: o.outlet,
+        table: o.tableNumber,
+        total: o.totalAmount,
+        status: o.status,
+        items: o.items.map((i: any) => `${i.name} x${i.quantity}`).join(", ")
+      }));
+    }
+    case "getMenuItems": {
+        const items = await convex.query(api.aiChatbot.getMenuItems, { token }) as any[];
+        return items.map(i => ({
+          name: i.name,
+          cat: i.category,
+          price: i.price,
+          outlet: i.outlet,
+          available: i.isAvailable
+        }));
+    }
+    case "getBanquetData": {
+      const data = await convex.query(api.aiChatbot.getBanquetData, base) as any;
+      return {
+        halls: data.halls.map((h: any) => ({ name: h.name, capacity: h.capacity, price: h.price })),
+        bookings: data.bookings.map((b: any) => ({ event: b.eventName, date: b.eventDate, guest: b.guestName, status: b.status }))
+      };
+    }
+    case "getStaff": {
+      const staff = await convex.query(api.aiChatbot.getStaff, { token }) as any[];
+      return staff.map(s => ({ name: s.name, role: s.role, active: s.isActive }));
+    }
+    case "getAuditLog": {
+      const logs = await convex.query(api.aiChatbot.getAuditLog, base) as any[];
+      return logs.map(l => ({ action: l.action, details: l.details, time: new Date(l.timestamp).toLocaleString() }));
+    }
+    case "getHotelSettings": {
+      const settings = await convex.query(api.aiChatbot.getHotelSettings, { token }) as any[];
+      return settings[0] || {}; // Return first config
+    }
     default: throw new Error(`Unknown tool: ${toolName}`);
   }
 }
-
-// ─── Types ────────────────────────────────────────────────────────
 
 type GeminiPart =
   | { text: string }
@@ -245,8 +300,6 @@ type GeminiPart =
   | { functionResponse: { name: string; response: { content: unknown } } };
 
 type GeminiContent = { role: string; parts: GeminiPart[] };
-
-// ─── POST handler ─────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
@@ -265,13 +318,11 @@ export async function POST(req: NextRequest) {
     const systemPrompt = buildSystemPrompt(today);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
-    // Build conversation contents
     const contents: GeminiContent[] = [
       ...history,
       { role: "user", parts: [{ text: userMessage }] },
     ];
 
-    // Agentic loop — keep going until Gemini returns plain text (no more tool calls)
     const toolsUsed: string[] = [];
 
     for (let round = 0; round < 6; round++) {
@@ -304,13 +355,11 @@ export async function POST(req: NextRequest) {
       const parts = data.candidates?.[0]?.content?.parts ?? [];
       const toolCalls = parts.filter((p) => p.functionCall);
 
-      // No more tool calls → return final text answer to client
       if (toolCalls.length === 0) {
         const text = parts.find((p) => p.text)?.text ?? "I couldn't generate a response.";
         return NextResponse.json({ text, toolsUsed });
       }
 
-      // Append the model's tool-call turn to the conversation
       contents.push({
         role: "model",
         parts: parts.map((p) =>
@@ -318,7 +367,6 @@ export async function POST(req: NextRequest) {
         ) as GeminiPart[],
       });
 
-      // Execute all requested tools in parallel
       const names = toolCalls.map((p) => p.functionCall!.name);
       toolsUsed.push(...names);
 
@@ -334,7 +382,6 @@ export async function POST(req: NextRequest) {
         })
       );
 
-      // Feed tool results back into conversation
       contents.push({
         role: "user",
         parts: toolResults.map(({ name, result }) => ({

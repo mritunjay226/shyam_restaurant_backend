@@ -26,7 +26,9 @@ export default function RoomsPage() {
 
   const rooms: RoomViewData[] = (rawRooms || []).map(room => {
     const activeBooking = (rawBookings || []).find(b =>
-      b.roomId === room._id && (b.status === "checked_in" || b.status === "confirmed")
+      b.roomId === room._id && 
+      b.status !== "cancelled" && 
+      b.status !== "checked_out"
     );
     const nights = activeBooking?.checkIn && activeBooking?.checkOut
       ? Math.max(1, Math.round((new Date(activeBooking.checkOut).getTime() - new Date(activeBooking.checkIn).getTime()) / 86400000))

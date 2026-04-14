@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { format, differenceInDays } from "date-fns";
 import { RoomViewData } from "@/components/RoomCard";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,11 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Calendar as CalendarIcon, User, UserCheck, ShieldCheck, Droplets } from "lucide-react";
+import { X, Calendar as CalendarIcon, User, UserCheck, ShieldCheck, Droplets, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { DatePicker } from "./ui/date-picker";
+import { parseISO, startOfDay, eachDayOfInterval } from "date-fns";
 
 interface BookingSheetProps {
   room: RoomViewData | null;
@@ -39,10 +41,36 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const [checkOut, setCheckOut] = useState("");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFutureBookingMode, setIsFutureBookingMode] = useState(false);
   const router = useRouter();
 
   const createBooking = useMutation(api.bookings.createBooking);
   const checkoutMutation = useMutation(api.bookings.checkOut);
+
+  // Availability query
+  const roomBookings = useQuery(api.bookings.getBookingsByRoom, 
+    room?._id ? { roomId: room._id as any } : "skip"
+  ) || [];
+
+  // Compute disabled dates
+  const disabledDates = useMemo(() => {
+    const dates: any[] = [{ before: startOfDay(new Date()) }];
+    
+    roomBookings.forEach(b => {
+      if (b.status !== 'cancelled' && b.status !== 'checked_out') {
+        try {
+          const start = parseISO(b.checkIn);
+          const end = parseISO(b.checkOut);
+          const days = eachDayOfInterval({ start, end });
+          days.pop(); // Leave check-out day available for next guest
+          dates.push(...days);
+        } catch (e) {
+          // ignore invalid dates
+        }
+      }
+    });
+    return dates;
+  }, [roomBookings]);
 
   // Auto-fill guest profile
   const existingGuest = useQuery(api.bookings.getGuestByPhone, phone.length >= 10 ? { phone } : "skip");
@@ -64,6 +92,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
       setIdNumber("");
       setCheckOut("");
       setNotes("");
+      setIsFutureBookingMode(false);
     }
   }, [room]);
 
@@ -216,23 +245,34 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
 
                   <hr className="border-gray-100" />
 
-                  {/* Stay Details */}
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                      <CalendarIcon size={14} /> Stay Schedule
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-gray-700">Check-in</Label>
-                        <Input type="date" value={checkIn} min={new Date().toISOString().split('T')[0]} onChange={e => setCheckIn(e.target.value)} onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50/50 border-gray-200 uppercase text-sm" />
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                        <CalendarIcon size={14} /> Stay Schedule
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-gray-700">Check-in</Label>
+                          <DatePicker 
+                            date={checkIn ? new Date(checkIn) : undefined} 
+                            setDate={(d) => setCheckIn(d ? d.toISOString().split('T')[0] : '')}
+                            label="Select Check-in"
+                            min={new Date()}
+                            disabled={disabledDates}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-gray-700">Check-out</Label>
+                          <DatePicker 
+                            date={checkOut ? new Date(checkOut) : undefined} 
+                            setDate={(d) => setCheckOut(d ? d.toISOString().split('T')[0] : '')}
+                            label="Select Check-out"
+                            min={checkIn ? new Date(checkIn) : new Date()}
+                            disabled={disabledDates}
+                            align="end"
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-gray-700">Check-out</Label>
-                        <Input type="date" value={checkOut} min={checkIn || new Date().toISOString().split('T')[0]} onChange={e => setCheckOut(e.target.value)} onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50/50 border-gray-200 uppercase text-sm" required />
-                      </div>
-
                     </div>
-                  </div>
 
                   <hr className="border-gray-100" />
 
@@ -276,14 +316,25 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                 <div className="space-y-6">
                   {/* Occupied State View */}
                   <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                        <UserCheck size={18} className="text-green-700" />
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                          <UserCheck size={18} className="text-green-700" />
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-0.5">Checked In Guest</p>
+                          <p className="font-bold text-lg text-gray-900 tracking-tight">{room.guestName}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-0.5">Checked In Guest</p>
-                        <p className="font-bold text-lg text-gray-900 tracking-tight">{room.guestName}</p>
-                      </div>
+                      {!isFutureBookingMode && (
+                        <Button 
+                          onClick={() => setIsFutureBookingMode(true)}
+                          variant="outline" 
+                          className="rounded-xl border-green-200 text-green-700 hover:bg-green-50 gap-2 h-9 px-3"
+                        >
+                          <Plus size={14} /> New Future Stay
+                        </Button>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200/60">
@@ -297,6 +348,83 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                       </div>
                     </div>
                   </div>
+
+                  {isFutureBookingMode && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }} 
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="space-y-6 overflow-hidden"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-bold text-gray-900">Book Future Stay</h3>
+                        <Button variant="ghost" size="sm" onClick={() => setIsFutureBookingMode(false)} className="h-7 text-xs">
+                          Cancel
+                        </Button>
+                      </div>
+                      
+                      {/* Guest Info */}
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="guestName" className="text-xs font-semibold text-gray-700">Full Name</Label>
+                            <Input id="guestName" value={guestName} onChange={e => setGuestName(e.target.value)} placeholder="Future guest name" onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50/50 border-gray-200" required />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="phone" className="text-xs font-semibold text-gray-700">Phone Number</Label>
+                            <div className="flex gap-2">
+                              <select 
+                                value={countryCode} 
+                                onChange={(e) => setCountryCode(e.target.value)}
+                                className="flex h-11 w-20 rounded-xl border border-gray-200 bg-gray-50/50 px-2 py-2 text-xs outline-none"
+                              >
+                                <option value="+91">+91</option>
+                                <option value="+1">+1</option>
+                                <option value="+44">+44</option>
+                              </select>
+                              <Input id="phone" value={phone} onChange={e => setPhone(e.target.value)} type="tel" placeholder="000-000-0000" onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50/50 border-gray-200 flex-1" required />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Schedule */}
+                      <div className="space-y-4 pt-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-gray-700">New Check-in</Label>
+                            <DatePicker 
+                              date={checkIn ? new Date(checkIn) : undefined} 
+                              setDate={(d) => setCheckIn(d ? d.toISOString().split('T')[0] : '')}
+                              label="Check-in Date"
+                              min={new Date()}
+                              disabled={disabledDates}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-gray-700">New Check-out</Label>
+                            <DatePicker 
+                              date={checkOut ? new Date(checkOut) : undefined} 
+                              setDate={(d) => setCheckOut(d ? d.toISOString().split('T')[0] : '')}
+                              label="Check-out Date"
+                              min={checkIn ? new Date(checkIn) : new Date()}
+                              disabled={disabledDates}
+                              align="end"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Notes */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-gray-700">Notes</Label>
+                        <textarea
+                          value={notes} onChange={e => setNotes(e.target.value)} onPointerDown={onPointerDown}
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3 py-3 text-sm h-20 outline-none focus:ring-2 focus:ring-green-500/20 resize-none transition-colors"
+                          placeholder="Future booking notes..."
+                        />
+                      </div>
+                    </motion.div>
+                  )}
                 </div>
               )}
             </div>
@@ -324,16 +452,24 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                 </div>
               ) : (
                 <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
-                  <div className="flex-1 w-full bg-white px-4 py-2.5 rounded-xl border border-gray-200">
-                    <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Payable Balance</p>
-                    <p className="text-xl font-bold text-gray-900 tabular-nums">₹{((room.tariff || 0) * (room.nights || 1) - (room.advance || 0)).toLocaleString()}</p>
-                  </div>
-                  <Button disabled={isSubmitting} variant="outline" onClick={onClose} className="h-12 w-full sm:w-auto px-6 rounded-xl border-gray-200 font-semibold text-gray-600">
-                    Close
-                  </Button>
-                  <Button disabled={isSubmitting} onClick={handleCheckOut} className="h-12 w-full sm:w-auto px-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
-                    {isSubmitting ? "Processing..." : "Settle & Checkout"}
-                  </Button>
+                  {!isFutureBookingMode ? (
+                    <>
+                      <div className="flex-1 w-full bg-white px-4 py-2.5 rounded-xl border border-gray-200 shadow-sm">
+                        <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Payable Balance</p>
+                        <p className="text-xl font-bold text-gray-900 tabular-nums">₹{((room.tariff || 0) * (room.nights || 1) - (room.advance || 0)).toLocaleString()}</p>
+                      </div>
+                      <Button disabled={isSubmitting} variant="outline" onClick={onClose} className="h-12 w-full sm:w-auto px-6 rounded-xl border-gray-200 font-semibold text-gray-600">
+                        Close
+                      </Button>
+                      <Button disabled={isSubmitting} onClick={handleCheckOut} className="h-12 w-full sm:w-auto px-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
+                        {isSubmitting ? "Processing..." : "Settle & Checkout"}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button disabled={isSubmitting} onClick={handleConfirm} className="w-full h-12 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold tracking-wide shadow-sm active:scale-95 transition-all text-[15px]">
+                      {isSubmitting ? "Processing..." : "Confirm Future Booking"}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

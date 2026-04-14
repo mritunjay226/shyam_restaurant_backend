@@ -15,7 +15,7 @@ export default defineSchema({
     image: v.optional(v.string()),  // hero / primary image
     images: v.optional(v.array(v.string())), // gallery images
     amenities: v.optional(v.array(v.string())),
-  }),
+  }).index("by_roomNumber", ["roomNumber"]),
 
   // ROOM BOOKINGS
   bookings: defineTable({

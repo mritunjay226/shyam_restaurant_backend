@@ -3,6 +3,7 @@
 export const ALL_PAGES = [
   { href: "/", label: "Dashboard" },
   { href: "/rooms", label: "Rooms" },
+  { href: "/customers", label: "Customers" },
   { href: "/restaurant", label: "Restaurant" },
   { href: "/cafe", label: "Café" },
   { href: "/kitchen", label: "Kitchen KDS" },
