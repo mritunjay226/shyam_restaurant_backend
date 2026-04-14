@@ -222,7 +222,7 @@ function AIChatbotButton({ token, staffRole }: { token: string; staffRole: strin
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="fixed right-0 top-0 z-50 h-full w-full max-w-[480px] flex flex-col shadow-2xl bg-white"
+              className="fixed right-0 top-0 z-50 h-[100dvh] w-full sm:max-w-[480px] flex flex-col shadow-2xl bg-white"
             >
               {/* Close button row */}
               <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-green-100 shrink-0">

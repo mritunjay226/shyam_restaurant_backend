@@ -4,8 +4,11 @@
 // AdminAIChatbot.tsx
 // src/components/AdminAIChatbot.tsx
 //
-// .env.local:  NEXT_PUBLIC_GEMINI_KEY=your_key_here
-// Usage:       <AdminAIChatbot token={authToken} staffRole={staff.role} />
+// .env.local:
+//   GEMINI_KEY=your_key_here      ← server-side only, never NEXT_PUBLIC_
+//   CONVEX_URL=https://xxx.convex.cloud
+//
+// Usage: <AdminAIChatbot token={authToken} staffRole={staff.role} />
 // ─────────────────────────────────────────────────────────────────
 
 import {
@@ -25,210 +28,91 @@ interface Message {
   content: string;
 }
 
+// Gemini conversation turn — stored in state so multi-turn context
+// is preserved across messages without re-fetching anything.
+interface GeminiTurn {
+  role: string;
+  parts: Array<{ text?: string; functionCall?: unknown; functionResponse?: unknown }>;
+}
+
 interface Props {
   token: string;
   staffRole: string;
 }
 
-interface DBSnapshot {
-  rooms: Array<Record<string, unknown>>;
-  bookings: Array<Record<string, unknown>>;
-  guests: Array<Record<string, unknown>>;
-  menuItems: Array<Record<string, unknown>>;
-  orders: Array<Record<string, unknown>>;
-  banquetHalls: Array<Record<string, unknown>>;
-  banquetBookings: Array<Record<string, unknown>>;
-  bills: Array<{ createdAt: string; totalAmount: number; billType: string; [key: string]: unknown }>;
-  staff: Array<Record<string, unknown>>;
-  hotelSettings: Array<Record<string, unknown>>;
-  auditLog: Array<Record<string, unknown>>;
-  fetchedAt: string;
+// ─── Call our own API route (key never leaves the server) ─────────
+
+async function sendMessage(
+  token: string,
+  history: GeminiTurn[],
+  userMessage: string,
+  onStatus: (msg: string) => void
+): Promise<{ text: string; toolsUsed: string[] }> {
+  // Stream status updates by polling — the fetch itself is a single
+  // round-trip but we want to show "Thinking…" while waiting.
+  onStatus("Thinking…");
+
+  const res = await fetch("/api/ai-chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, history, userMessage }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? `Server error ${res.status}`);
+  }
+
+  const data = await res.json() as { text?: string; error?: string; toolsUsed?: string[] };
+  if (data.error) throw new Error(data.error);
+
+  return { text: data.text ?? "No response.", toolsUsed: data.toolsUsed ?? [] };
 }
 
-// ─── Markdown parser ─────────────────────────────────────────────
-// Lightweight renderer — no external dependency needed.
+// ─── Markdown renderer ────────────────────────────────────────────
 
 function renderMarkdown(text: string): string {
   return text
-    // headings
-    .replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>')
-    // bold + italic
-    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // inline code
-    .replace(/`([^`]+)`/g, '<code class="md-code">$1</code>')
-    // horizontal rule
-    .replace(/^---$/gm, '<hr class="md-hr" />')
-    // unordered lists — group consecutive lines
-    .replace(/^[-•] (.+)$/gm, '<li class="md-li">$1</li>')
-    .replace(/(<li class="md-li">.*<\/li>\n?)+/g, (m) => `<ul class="md-ul">${m}</ul>`)
-    // ordered lists
-    .replace(/^\d+\. (.+)$/gm, '<li class="md-oli">$1</li>')
-    .replace(/(<li class="md-oli">.*<\/li>\n?)+/g, (m) => `<ol class="md-ol">${m}</ol>`)
-    // blockquote
-    .replace(/^> (.+)$/gm, '<blockquote class="md-bq">$1</blockquote>')
-    // paragraphs — double newline → <p>
-    .replace(/\n{2,}/g, '</p><p class="md-p">')
-    // single newline inside content
-    .replace(/\n/g, '<br />')
-    // wrap everything in a paragraph
-    .replace(/^/, '<p class="md-p">')
-    .replace(/$/, '</p>');
-}
-
-// ─── Gemini API ──────────────────────────────────────────────────
-
-async function callGemini(
-  apiKey: string,
-  systemPrompt: string,
-  history: Message[],
-  userMessage: string
-): Promise<string> {
-  const contents = [
-    ...history.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    })),
-    { role: "user", parts: [{ text: userMessage }] },
-  ];
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
-      }),
-    }
-  );
-
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-    throw new Error(err?.error?.message ?? `Gemini error ${res.status}`);
-  }
-
-  const data = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "I couldn't generate a response.";
-}
-
-// ─── System prompt ───────────────────────────────────────────────
-
-function buildSystemPrompt(db: DBSnapshot | undefined): string {
-  if (!db) return "You are a helpful hotel assistant. The database is still loading.";
-
-  const today = new Date().toISOString().split("T")[0];
-  const todayRevenue = db.bills
-    .filter((b) => b.createdAt?.startsWith(today))
-    .reduce((s, b) => s + b.totalAmount, 0);
-  const totalRevenue = db.bills.reduce((s, b) => s + b.totalAmount, 0);
-  const occupied = db.rooms.filter((r) => (r as { status: string }).status === "occupied").length;
-  const available = db.rooms.filter(
-    (r) => (r as { status: string; isActive: boolean }).status === "available" &&
-            (r as { status: string; isActive: boolean }).isActive
-  ).length;
-
-  return `You are an intelligent hotel management AI assistant, accessible only to the main admin.
-Today's date: ${today}
-
-## LIVE DATABASE SNAPSHOT (fetched at ${db.fetchedAt})
-
-### ROOMS (${db.rooms.length} total | ${occupied} occupied | ${available} available)
-${JSON.stringify(db.rooms, null, 2)}
-
-### ROOM BOOKINGS (${db.bookings.length} total)
-${JSON.stringify(db.bookings, null, 2)}
-
-### GUEST PROFILES (${db.guests.length} profiles)
-${JSON.stringify(db.guests, null, 2)}
-
-### MENU ITEMS (${db.menuItems.length} items)
-${JSON.stringify(db.menuItems, null, 2)}
-
-### RESTAURANT / CAFE ORDERS (${db.orders.length} total)
-${JSON.stringify(db.orders, null, 2)}
-
-### BANQUET HALLS (${db.banquetHalls.length})
-${JSON.stringify(db.banquetHalls, null, 2)}
-
-### BANQUET BOOKINGS (${db.banquetBookings.length})
-${JSON.stringify(db.banquetBookings, null, 2)}
-
-### BILLS (${db.bills.length} total | Today: ₹${todayRevenue.toFixed(2)} | All-time: ₹${totalRevenue.toFixed(2)})
-${JSON.stringify(db.bills, null, 2)}
-
-### STAFF (${db.staff.length} members — PINs stripped)
-${JSON.stringify(db.staff, null, 2)}
-
-### HOTEL SETTINGS
-${JSON.stringify(db.hotelSettings, null, 2)}
-
-### RECENT AUDIT LOG (last 200 actions)
-${JSON.stringify(db.auditLog, null, 2)}
-
-## YOUR CAPABILITIES
-- Revenue analysis: daily, monthly, yearly, by outlet (room / restaurant / cafe / banquet)
-- Guest lookup by name or phone — case-insensitive partial matching across bookings, guests, banquetBookings
-- Room status, occupancy, upcoming arrivals and departures
-- Order history, best-selling menu items, outlet performance
-- Banquet events, upcoming bookings, balances due
-- Staff activity from audit logs
-
-## RULES
-- Always respond in clean Markdown format. Use headings, bullet points, bold text, and tables where appropriate.
-- Use ₹ for all currency. Format large numbers with Indian comma style (e.g. ₹1,20,000).
-- When asked about a specific date, filter by that date string (YYYY-MM-DD format).
-- If data doesn't exist for a query, say so honestly.
-- If someone asks in hinglish reply them in hinglish, if english reply them in english and do the same for hindi.
-- Never reveal staff PINs — already removed from data.`;
+    .replace(/^### (.+)$/gm, '<h3 class="text-[13px] font-bold text-green-800 mt-2 mb-1">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-[14px] font-bold text-green-800 mt-2.5 mb-1">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="text-[15px] font-extrabold text-green-900 mt-3 mb-1.5">$1</h1>')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong class="font-bold text-green-700 italic">$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="font-bold text-green-700">$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em class="italic">$1</em>')
+    .replace(/`([^`]+)`/g, '<code class="bg-green-200/50 text-green-800 px-1.5 py-0.5 rounded-[4px] text-[12px] font-mono">$1</code>')
+    .replace(/^---$/gm, '<hr class="border-t border-green-200 my-3" />')
+    .replace(/^[-•] (.+)$/gm, '<li class="mb-0.5">$1</li>')
+    .replace(/(<li class="mb-0.5">.*<\/li>\n?)+/g, (m) => `<ul class="my-1.5 pl-4 list-disc">${m}</ul>`)
+    .replace(/^\d+\. (.+)$/gm, '<li class="mb-0.5">$1</li>')
+    .replace(/(<li class="mb-0.5">.*<\/li>\n?)+/g, (m) => `<ol class="my-1.5 pl-4 list-decimal">${m}</ol>`)
+    .replace(/^> (.+)$/gm, '<blockquote class="border-l-[3px] border-green-500 my-2 px-3 py-1.5 bg-green-100/50 rounded-r-md text-green-800 italic">$1</blockquote>')
+    .replace(/\n{2,}/g, '</p><p class="mb-2.5 last:mb-0">')
+    .replace(/\n/g, "<br />")
+    .replace(/^/, '<p class="mb-2.5 last:mb-0">')
+    .replace(/$/, "</p>");
 }
 
 // ─── Suggestions ─────────────────────────────────────────────────
 
 const SUGGESTIONS: string[] = [
   "What was today's total revenue?",
-  // "Has any guest named Rahul ever visited?",
   "Which rooms are currently occupied?",
   "Revenue breakdown for this month",
   "Top selling menu items",
   "Any upcoming banquet bookings?",
 ];
 
-// ─── Markdown message bubble ─────────────────────────────────────
+// ─── Subcomponents ────────────────────────────────────────────────
 
 function AssistantBubble({ content }: { content: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16 }}>
-      {/* Avatar */}
-      <div style={{
-        width: 28, height: 28, borderRadius: "50%", flexShrink: 0, marginTop: 2,
-        background: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 13, color: "#fff", fontWeight: 700,
-      }}>
+    <div className="flex items-start gap-2 mb-4 animate-[aiFadeUp_0.3s_ease-out_forwards]">
+      <div className="w-7 h-7 rounded-full shrink-0 mt-0.5 bg-green-600 flex items-center justify-center text-[13px] text-white font-bold shadow-sm">
         ✦
       </div>
-      {/* Bubble */}
       <div
-        className="ai-md-bubble"
+        className="flex-1 bg-green-50 border border-green-200/60 rounded-2xl rounded-tl-sm px-4 py-3 text-[13.5px] leading-relaxed text-green-950 max-w-[calc(100%-36px)]"
         dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
-        style={{
-          flex: 1,
-          background: "#F0FDF4",
-          border: "1px solid #BBF7D0",
-          borderRadius: "0 14px 14px 14px",
-          padding: "10px 14px",
-          fontSize: 13.5,
-          lineHeight: 1.65,
-          color: "#14532D",
-          maxWidth: "calc(100% - 36px)",
-        }}
       />
     </div>
   );
@@ -236,96 +120,141 @@ function AssistantBubble({ content }: { content: string }) {
 
 function UserBubble({ content }: { content: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-      <div style={{
-        background: "#16A34A",
-        color: "#fff",
-        borderRadius: "14px 14px 0 14px",
-        padding: "10px 14px",
-        fontSize: 13.5,
-        lineHeight: 1.6,
-        maxWidth: "78%",
-        whiteSpace: "pre-wrap",
-        boxShadow: "0 2px 8px rgba(22,163,74,0.2)",
-      }}>
+    <div className="flex justify-end mb-4 animate-[aiFadeUp_0.3s_ease-out_forwards]">
+      <div className="bg-green-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-[13.5px] leading-relaxed max-w-[85%] sm:max-w-[75%] whitespace-pre-wrap shadow-sm">
         {content}
       </div>
     </div>
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ status }: { status: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-      <div style={{
-        width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-        background: "#16A34A", display: "flex", alignItems: "center",
-        justifyContent: "center", fontSize: 13, color: "#fff",
-      }}>✦</div>
-      <div style={{
-        background: "#F0FDF4", border: "1px solid #BBF7D0",
-        borderRadius: "0 14px 14px 14px", padding: "10px 14px",
-        display: "flex", gap: 5,
-      }}>
-        {[0, 1, 2].map((i) => (
-          <span key={i} style={{
-            width: 7, height: 7, borderRadius: "50%", background: "#16A34A",
-            display: "inline-block",
-            animation: `aiBounce 1.2s ease ${i * 0.2}s infinite`,
-          }} />
-        ))}
+    <div className="flex items-center gap-2 mb-4 animate-[aiFadeUp_0.3s_ease-out_forwards]">
+      <div className="w-7 h-7 rounded-full shrink-0 bg-green-600 flex items-center justify-center text-[13px] text-white shadow-sm">
+        ✦
+      </div>
+      <div className="bg-green-50 border border-green-200/60 rounded-2xl rounded-tl-sm px-3.5 py-3 flex items-center gap-2 min-h-[34px]">
+        {status ? (
+          <span className="text-[12px] text-green-700 italic">{status}</span>
+        ) : (
+          <div className="flex gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"
+                style={{ animation: `aiBounce 1.2s ease-in-out ${i * 0.2}s infinite` }}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
+// ─── Keyboard offset hook ─────────────────────────────────────────
+
+function useKeyboardOffset() {
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    if (!window.visualViewport) return;
+    const handle = () => {
+      const v = window.visualViewport;
+      if (v) setOffset(Math.max(0, window.innerHeight - v.height));
+    };
+    window.visualViewport.addEventListener("resize", handle);
+    window.visualViewport.addEventListener("scroll", handle);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", handle);
+      window.visualViewport?.removeEventListener("scroll", handle);
+    };
+  }, []);
+  return offset;
+}
+
 // ─── Main component ──────────────────────────────────────────────
 
 export default function AdminAIChatbot({ token, staffRole }: Props) {
-  const geminiKey = process.env.NEXT_PUBLIC_GEMINI_KEY ?? "";
+  // Visible chat messages (user + assistant bubbles)
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: "assistant",
+      content:
+        "Namaste! I'm your hotel AI assistant. I fetch **only the data I need** for each question.\n\nAsk me anything about your property.",
+    },
+  ]);
 
-  const [messages, setMessages] = useState<Message[]>([{
-    role: "assistant",
-    content: "Namaste! I'm your hotel AI assistant. I have **live access** to all your data — rooms, bookings, guests, orders, bills, and banquet events.\n\nAsk me anything about your property.",
-  }]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  // Full Gemini conversation history (includes tool turns, never shown to user)
+  // Starts empty — the first user message seeds it.
+  const [geminiHistory, setGeminiHistory] = useState<GeminiTurn[]>([]);
+
+  const [input, setInput]             = useState("");
+  const [loading, setLoading]         = useState(false);
+  const [fetchStatus, setFetchStatus] = useState("");
+
+  const bottomRef   = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const keyboardOffset = useKeyboardOffset();
 
-  const dbData = useQuery(
-    api.aiChatbot.getAllDataForAI,
+  // Lightweight status bar query — only counts + today's revenue
+  const stats = useQuery(
+    api.aiChatbot.getStatsSummary,
     staffRole === "admin" ? { token } : "skip"
-  ) as DBSnapshot | undefined;
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const handleSend = useCallback(async (overrideText?: string) => {
-    const text = (overrideText ?? input).trim();
-    if (!text || loading) return;
+  const handleSend = useCallback(
+    async (overrideText?: string) => {
+      const text = (overrideText ?? input).trim();
+      if (!text || loading) return;
 
-    setInput("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-    setLoading(true);
+      setInput("");
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
 
-    try {
-      if (!geminiKey) throw new Error("Add NEXT_PUBLIC_GEMINI_KEY to .env.local");
-      const systemPrompt = buildSystemPrompt(dbData);
-      const history = messages.slice(1).slice(-10);
-      const reply = await callGemini(geminiKey, systemPrompt, history, text);
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Something went wrong.";
-      setMessages((prev) => [...prev, { role: "assistant", content: `**Error:** ${msg}` }]);
-    } finally {
-      setLoading(false);
-    }
-  }, [input, loading, messages, dbData, geminiKey]);
+      // Show user bubble immediately
+      setMessages((prev) => [...prev, { role: "user", content: text }]);
+      setLoading(true);
+      setFetchStatus("Thinking…");
+
+      try {
+        const { text: reply, toolsUsed } = await sendMessage(
+          token,
+          geminiHistory,
+          text,
+          (status) => setFetchStatus(status)
+        );
+
+        // Append assistant bubble
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+
+        // Update Gemini history with this full round-trip so context carries forward
+        setGeminiHistory((prev) => [
+          ...prev,
+          { role: "user",  parts: [{ text }] },
+          { role: "model", parts: [{ text: reply }] },
+        ]);
+
+        // Optional: log which tools were used (visible in dev console)
+        if (toolsUsed.length > 0) {
+          console.debug("[AI] tools used:", toolsUsed.join(", "));
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Something went wrong.";
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `**Error:** ${msg}` },
+        ]);
+      } finally {
+        setLoading(false);
+        setFetchStatus("");
+      }
+    },
+    [input, loading, geminiHistory, token]
+  );
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -340,136 +269,54 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
     <>
       <style>{`
         @keyframes aiFadeUp {
-          from { opacity: 0; transform: translateY(6px); }
-          to   { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; transform: translateY(8px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
         }
         @keyframes aiBounce {
-          0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
-          40%            { transform: translateY(-5px); opacity: 1; }
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+          40%            { transform: translateY(-4px); opacity: 1; }
         }
-
-        /* Markdown styles scoped to AI bubble */
-        .ai-md-bubble p.md-p   { margin: 0 0 8px 0; }
-        .ai-md-bubble p.md-p:last-child { margin-bottom: 0; }
-        .ai-md-bubble h1.md-h1 { font-size: 15px; font-weight: 800; color: #14532D; margin: 10px 0 4px; }
-        .ai-md-bubble h2.md-h2 { font-size: 14px; font-weight: 700; color: #166534; margin: 8px 0 4px; }
-        .ai-md-bubble h3.md-h3 { font-size: 13px; font-weight: 700; color: #166534; margin: 6px 0 2px; }
-        .ai-md-bubble strong   { font-weight: 700; color: #15803D; }
-        .ai-md-bubble em       { font-style: italic; }
-        .ai-md-bubble code.md-code {
-          background: #DCFCE7; color: #166534; padding: 1px 5px;
-          border-radius: 4px; font-size: 12px; font-family: monospace;
-        }
-        .ai-md-bubble ul.md-ul { margin: 4px 0 8px 0; padding-left: 18px; list-style: disc; }
-        .ai-md-bubble ol.md-ol { margin: 4px 0 8px 0; padding-left: 18px; list-style: decimal; }
-        .ai-md-bubble li.md-li,
-        .ai-md-bubble li.md-oli { margin-bottom: 2px; }
-        .ai-md-bubble blockquote.md-bq {
-          border-left: 3px solid #16A34A; margin: 6px 0;
-          padding: 4px 10px; background: #DCFCE7; border-radius: 0 6px 6px 0;
-          color: #166534; font-style: italic;
-        }
-        .ai-md-bubble hr.md-hr {
-          border: none; border-top: 1px solid #BBF7D0; margin: 8px 0;
-        }
-
-        .ai-chat-scroll::-webkit-scrollbar { width: 4px; }
-        .ai-chat-scroll::-webkit-scrollbar-track { background: transparent; }
-        .ai-chat-scroll::-webkit-scrollbar-thumb { background: #BBF7D0; border-radius: 2px; }
-
-        .ai-textarea:focus {
-          outline: none;
-          border-color: #16A34A !important;
-          box-shadow: 0 0 0 3px rgba(22,163,74,0.12);
-        }
-        .ai-textarea::placeholder { color: #9CA3AF; }
-
-        .ai-chip {
-          padding: 5px 12px;
-          border-radius: 20px;
-          border: 1px solid #BBF7D0;
-          background: #F0FDF4;
-          color: #16A34A;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s;
-          white-space: nowrap;
-        }
-        .ai-chip:hover {
-          background: #DCFCE7;
-          border-color: #16A34A;
-        }
-
-        .ai-send-btn {
-          width: 38px; height: 38px;
-          border-radius: 10px;
-          background: #16A34A;
-          border: none;
-          cursor: pointer;
-          display: flex; align-items: center; justify-content: center;
-          flex-shrink: 0;
-          transition: all 0.15s;
-          box-shadow: 0 2px 8px rgba(22,163,74,0.3);
-        }
-        .ai-send-btn:hover:not(:disabled) { background: #15803D; transform: scale(1.05); }
-        .ai-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
       `}</style>
 
-      <div style={{
-        display: "flex", flexDirection: "column",
-        height: "100%", background: "#fff",
-        fontFamily: "'Segoe UI', sans-serif",
-      }}>
-
+      <div
+        className="flex flex-col bg-white font-sans transition-[max-height] duration-150 ease-out sm:max-w-3xl sm:mx-auto sm:border-x sm:border-gray-100 sm:shadow-sm"
+        style={{ height: "100%", maxHeight: `calc(100% - ${keyboardOffset}px)` }}
+      >
         {/* ── Status bar ── */}
-        <div style={{
-          padding: "10px 16px",
-          borderBottom: "1px solid #F0FDF4",
-          background: "#FAFFFE",
-          display: "flex", alignItems: "center", gap: 8,
-          flexShrink: 0,
-        }}>
-          <div style={{
-            width: 7, height: 7, borderRadius: "50%",
-            background: dbData ? "#16A34A" : "#FCD34D",
-            boxShadow: dbData ? "0 0 5px #16A34A" : "0 0 5px #FCD34D",
-          }} />
-          <span style={{ fontSize: 11, color: "#6B7280", fontWeight: 500 }}>
-            {dbData
-              ? `Live · ${dbData.bills.length} bills · ${dbData.bookings.length} bookings · ${dbData.guests.length} guests`
-              : "Connecting to database…"}
+        <div className="px-4 py-2.5 border-b border-green-50/50 bg-[#FAFFFE] flex items-center gap-2.5 shrink-0 z-10 shadow-sm">
+          <div className="relative flex h-2 w-2">
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${stats ? "bg-green-500" : "bg-amber-400"}`} />
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${stats ? "bg-green-600" : "bg-amber-500"}`} />
+          </div>
+          <span className="text-[11.5px] text-gray-500 font-medium tracking-wide uppercase">
+            {stats
+              ? `Live · ${stats.rooms.occupied} Occupied · ₹${stats.revenue.today.toLocaleString("en-IN")} Today`
+              : "Connecting…"}
           </span>
         </div>
 
         {/* ── Messages ── */}
-        <div
-          className="ai-chat-scroll"
-          style={{ flex: 1, overflowY: "auto", padding: "16px 14px 8px" }}
-        >
+        <div className="flex-1 overflow-y-auto px-4 pt-5 pb-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-green-200 [&::-webkit-scrollbar-thumb]:rounded-full">
           {messages.map((msg, i) =>
             msg.role === "assistant" ? (
-              <div key={i} style={{ animation: "aiFadeUp 0.2s ease" }}>
-                <AssistantBubble content={msg.content} />
-              </div>
+              <AssistantBubble key={i} content={msg.content} />
             ) : (
-              <div key={i} style={{ animation: "aiFadeUp 0.2s ease" }}>
-                <UserBubble content={msg.content} />
-              </div>
+              <UserBubble key={i} content={msg.content} />
             )
           )}
-          {loading && <TypingIndicator />}
-          <div ref={bottomRef} />
+          {loading && <TypingIndicator status={fetchStatus} />}
+          <div ref={bottomRef} className="h-1" />
         </div>
 
         {/* ── Suggestion chips ── */}
         {messages.length === 1 && (
-          <div style={{
-            padding: "0 14px 10px",
-            display: "flex", flexWrap: "wrap", gap: 6,
-          }}>
+          <div className="px-4 pb-3 flex flex-wrap gap-2 animate-[aiFadeUp_0.4s_ease-out_forwards]">
             {SUGGESTIONS.map((s) => (
-              <button key={s} className="ai-chip" onClick={() => void handleSend(s)}>
+              <button
+                key={s}
+                onClick={() => void handleSend(s)}
+                className="px-3.5 py-1.5 rounded-full border border-green-200 bg-green-50 text-green-700 text-[12px] font-semibold cursor-pointer transition-all hover:bg-green-100 hover:border-green-400 hover:scale-[1.02] active:scale-95 whitespace-nowrap"
+              >
                 {s}
               </button>
             ))}
@@ -477,52 +324,37 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
         )}
 
         {/* ── Input ── */}
-        <div style={{
-          padding: "10px 14px 14px",
-          borderTop: "1px solid #F3F4F6",
-          background: "#FAFFFE",
-          display: "flex", gap: 8, alignItems: "flex-end",
-          flexShrink: 0,
-        }}>
+        <div className="px-3 sm:px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] border-t border-gray-100 bg-[#FAFFFE] flex gap-2.5 items-end shrink-0">
           <textarea
             ref={textareaRef}
-            className="ai-textarea"
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
               e.currentTarget.style.height = "auto";
-              e.currentTarget.style.height =
-                Math.min(e.currentTarget.scrollHeight, 120) + "px";
+              e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 120) + "px";
             }}
             onKeyDown={handleKeyDown}
             placeholder="Ask anything about your hotel…"
             rows={1}
-            style={{
-              flex: 1,
-              border: "1.5px solid #E5E7EB",
-              borderRadius: 10,
-              padding: "9px 12px",
-              fontSize: 13.5,
-              color: "#111827",
-              resize: "none",
-              lineHeight: 1.5,
-              background: "#fff",
-              transition: "border-color 0.15s, box-shadow 0.15s",
-              fontFamily: "inherit",
-              overflowY: "hidden",
-            }}
+            className="flex-1 border-1.5 border-gray-200 rounded-[14px] px-3.5 py-3 text-[14px] text-gray-900 resize-none leading-relaxed bg-white transition-all focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-500/10 placeholder:text-gray-400 overflow-hidden shadow-sm"
           />
           <button
-            className="ai-send-btn"
             onClick={() => void handleSend()}
             disabled={loading || !input.trim()}
+            className="w-[44px] h-[44px] rounded-[14px] bg-green-600 border-none cursor-pointer flex items-center justify-center shrink-0 transition-all duration-200 shadow-[0_4px_12px_rgba(22,163,74,0.25)] hover:bg-green-700 hover:shadow-[0_4px_16px_rgba(22,163,74,0.35)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-[0_4px_12px_rgba(22,163,74,0.25)]"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="ml-0.5 mt-0.5">
               <path d="M22 2L11 13" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
               <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         </div>
+
+        {/* ── Mobile bottom nav spacer ── */}
+        <div
+          className="md:hidden shrink-0 transition-[height] duration-150 ease-out bg-[#FAFFFE]"
+          style={{ height: keyboardOffset > 0 ? 0 : 64 }}
+        />
       </div>
     </>
   );
