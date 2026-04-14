@@ -85,7 +85,7 @@ export function MenuTab() {
             setIsSavingEdit(false);
         }
     };
-
+// hola amigo kaise ho thik ho
     return (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             <Section title="Add Menu Item" description="Add items to Restaurant or Café POS menus." icon={UtensilsCrossed}>
