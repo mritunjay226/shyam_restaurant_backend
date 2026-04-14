@@ -174,7 +174,7 @@ const HOTEL_TOOLS = [
     ],
   },
 ];
-
+// deploy trigger comment
 function buildSystemPrompt(today: string): string {
   return `Role: Hotel Admin AI. Date: ${today}.
 Rules:
