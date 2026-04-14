@@ -105,6 +105,10 @@ export const createBooking = mutation({
   },
   handler: async (ctx, args) => {
     // ── 1. DATE OVERLAP CHECK ──────────────────────────────────────
+    // Get room details for error reporting
+    const roomRecord = await ctx.db.get(args.roomId);
+    const roomLabel = roomRecord ? `Room ${roomRecord.roomNumber}` : "This room";
+
     // Find all active bookings for this room (not cancelled/checked_out)
     const activeBookings = await ctx.db
       .query("bookings")
@@ -120,7 +124,7 @@ export const createBooking = mutation({
     for (const b of activeBookings) {
       if (overlaps(args.checkIn, args.checkOut, b.checkIn, b.checkOut)) {
         throw new Error(
-          `Room is already booked from ${b.checkIn} to ${b.checkOut} (${b.guestName}). Please choose different dates.`
+          `${roomLabel} is already booked from ${b.checkIn} to ${b.checkOut} (${b.guestName}). Please choose different dates.`
         );
       }
     }
