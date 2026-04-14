@@ -32,7 +32,9 @@ export default function BanquetPage() {
   const [plateCost, setPlateCost] = useState("");
   const [guestName, setGuestName] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("+91");
   const [eventName, setEventName] = useState("");
+
   const [totalAmount, setTotalAmount] = useState("0");
   const [advance, setAdvance] = useState("0");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -84,8 +86,9 @@ export default function BanquetPage() {
         eventType,
         eventDate,
         guestName,
-        guestPhone,
+        guestPhone: `${countryCode}${guestPhone}`,
         guestCount: parseInt(guestCount || "0"),
+
         plateCost: parseInt(plateCost || "0") || undefined,
         totalAmount: parseInt(totalAmount || "0"),
         advance: parseInt(advance || "0")
@@ -279,8 +282,9 @@ export default function BanquetPage() {
                   <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-1.5">
                       <Label className="text-xs font-bold text-gray-700">Event Date</Label>
-                      <Input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} className="h-11 rounded-xl" />
+                      <Input type="date" value={eventDate} min={new Date().toISOString().split('T')[0]} onChange={e => setEventDate(e.target.value)} className="h-11 rounded-xl" />
                     </div>
+
                     <div className="space-y-1.5">
                       <Label className="text-xs font-bold text-gray-700">Expected Guests</Label>
                       <Input type="number" value={guestCount} onChange={e => setGuestCount(e.target.value)} placeholder={`Max ${activeHall.capacity}`} className="h-11 rounded-xl" />
@@ -300,8 +304,22 @@ export default function BanquetPage() {
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs font-bold text-gray-700">Phone Number</Label>
-                      <Input type="tel" value={guestPhone} onChange={e => setGuestPhone(e.target.value)} placeholder="+91" className="h-11 rounded-xl" />
+                      <div className="flex gap-2">
+                        <select 
+                          value={countryCode} 
+                          onChange={(e) => setCountryCode(e.target.value)}
+                          className="flex h-11 w-20 rounded-xl border border-gray-200 bg-gray-50/50 px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-green-500/20"
+                        >
+                          <option value="+91">+91</option>
+                          <option value="+1">+1</option>
+                          <option value="+44">+44</option>
+                          <option value="+61">+61</option>
+                          <option value="+971">+971</option>
+                        </select>
+                        <Input type="tel" value={guestPhone} onChange={e => setGuestPhone(e.target.value)} placeholder="000-000-0000" className="h-11 rounded-xl flex-1" />
+                      </div>
                     </div>
+
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">

@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as aiChatbot from "../aiChatbot.js";
 import type * as auth from "../auth.js";
 import type * as banquet from "../banquet.js";
 import type * as billing from "../billing.js";
@@ -28,6 +29,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  aiChatbot: typeof aiChatbot;
   auth: typeof auth;
   banquet: typeof banquet;
   billing: typeof billing;

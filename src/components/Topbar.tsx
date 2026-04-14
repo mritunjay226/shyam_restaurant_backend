@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, Menu, Search } from "lucide-react";
+import { Bell, Menu, Search, Sparkles, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
@@ -13,7 +13,28 @@ import {
   Popover, PopoverContent, PopoverTrigger, PopoverHeader, PopoverTitle
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import AdminAIChatbot from "@/components/adminAiChatbot";
+
+// ─── Auth hook — reads token from localStorage, validates via Convex ─────────
+
+function useAuthSession() {
+  const [token, setToken] = useState<string>("");
+
+  useEffect(() => {
+    const stored = localStorage.getItem("staff_session_token") ?? "";
+    setToken(stored);
+  }, []);
+
+  const staff = useQuery(
+    api.auth.validateSession,
+    token ? { token } : "skip"
+  );
+
+  return { token, staff };
+}
+
+// ─── Live KOT Updates (unchanged) ───────────────────────────────────────────
 
 function LiveUpdates() {
   const pathname = usePathname();
@@ -23,11 +44,17 @@ function LiveUpdates() {
     setMounted(true);
   }, []);
 
-  const outlet = pathname?.includes("/cafe") ? "cafe" : pathname?.includes("/restaurant") ? "restaurant" : undefined;
+  const outlet = pathname?.includes("/cafe")
+    ? "cafe"
+    : pathname?.includes("/restaurant")
+    ? "restaurant"
+    : undefined;
 
-  const activeOrders = useQuery(api.orders.getActiveOrdersByOutlet,
-    outlet ? { outlet } : "skip" as any
-  ) || [];
+  const activeOrders =
+    useQuery(
+      api.orders.getActiveOrdersByOutlet,
+      outlet ? { outlet } : ("skip" as any)
+    ) || [];
 
   const updateStatus = useMutation(api.orders.updateOrderStatus);
 
@@ -47,15 +74,17 @@ function LiveUpdates() {
         className={cn(
           buttonVariants({ variant: "outline", size: "sm" }),
           "h-8 sm:h-9 px-2 sm:px-4 rounded-xl font-bold text-[10px] sm:text-xs uppercase tracking-wider relative transition-all duration-300 gap-1.5 sm:gap-2",
-          activeOrders.some(o => o.status === "ready")
+          activeOrders.some((o) => o.status === "ready")
             ? "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 shadow-sm shadow-emerald-100"
             : "bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-100"
         )}
       >
-        <div className={cn(
-          "w-1.5 h-1.5 rounded-full shrink-0",
-          activeOrders.length > 0 ? "bg-current animate-pulse" : "bg-gray-300"
-        )} />
+        <div
+          className={cn(
+            "w-1.5 h-1.5 rounded-full shrink-0",
+            activeOrders.length > 0 ? "bg-current animate-pulse" : "bg-gray-300"
+          )}
+        />
         <span className="hidden min-[380px]:inline">Updates</span>
         <span className="min-[380px]:hidden">KOT</span>
         {activeOrders.length > 0 && (
@@ -64,9 +93,14 @@ function LiveUpdates() {
           </span>
         )}
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[280px] sm:w-[320px] p-0 rounded-2xl overflow-hidden border-gray-100 shadow-xl bg-white">
+      <PopoverContent
+        align="end"
+        className="w-[280px] sm:w-[320px] p-0 rounded-2xl overflow-hidden border-gray-100 shadow-xl bg-white"
+      >
         <PopoverHeader className="px-4 py-3 bg-gray-50/50 border-b border-gray-100">
-          <PopoverTitle className="text-[10px] font-black uppercase tracking-widest text-gray-500">Live KOT Updates</PopoverTitle>
+          <PopoverTitle className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+            Live KOT Updates
+          </PopoverTitle>
         </PopoverHeader>
         <div className="max-h-[350px] overflow-y-auto no-scrollbar py-1">
           {activeOrders.length === 0 ? (
@@ -80,15 +114,24 @@ function LiveUpdates() {
                 className="px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-bold text-gray-900">Table {order.tableNumber}</span>
-                  <span className={cn(
-                    "text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md",
-                    order.status === "ready" ? "bg-emerald-500 text-white" :
-                      order.status === "preparing" ? "bg-amber-100 text-amber-700" :
-                        "bg-gray-100 text-gray-500"
-                  )}>
-                    {order.status === "ready" ? "Ready" :
-                      order.status === "preparing" ? "Kitchen" : "Queued"}
+                  <span className="text-sm font-bold text-gray-900">
+                    Table {order.tableNumber}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md",
+                      order.status === "ready"
+                        ? "bg-emerald-500 text-white"
+                        : order.status === "preparing"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-gray-100 text-gray-500"
+                    )}
+                  >
+                    {order.status === "ready"
+                      ? "Ready"
+                      : order.status === "preparing"
+                      ? "Kitchen"
+                      : "Queued"}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-x-2 gap-y-0.5">
@@ -105,13 +148,19 @@ function LiveUpdates() {
                         <motion.div
                           className="h-full bg-emerald-500"
                           animate={{ x: ["-100%", "100%"] }}
-                          transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                          transition={{
+                            repeat: Infinity,
+                            duration: 1.5,
+                            ease: "linear",
+                          }}
                         />
                       </div>
-                      <span className="text-[9px] font-bold text-emerald-600 whitespace-nowrap">Ready for Pickup</span>
+                      <span className="text-[9px] font-bold text-emerald-600 whitespace-nowrap">
+                        Ready for Pickup
+                      </span>
                     </div>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       onClick={() => handleMarkServed(order._id)}
                       className="h-6 text-[10px] px-2 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 shadow-none font-bold shrink-0"
                     >
@@ -128,42 +177,133 @@ function LiveUpdates() {
   );
 }
 
+// ─── AI Chatbot Button + Slide-over Panel ────────────────────────────────────
+
+function AIChatbotButton({ token, staffRole }: { token: string; staffRole: string }) {
+  const [open, setOpen] = useState(false);
+
+  if (staffRole !== "admin") return null;
+
+  return (
+    <>
+      {/* Trigger button — matches your existing button style */}
+      <button
+        onClick={() => setOpen(true)}
+        className={cn(
+          buttonVariants({ variant: "outline", size: "sm" }),
+          "h-8 sm:h-9 px-2 sm:px-3 rounded-xl font-bold text-[10px] sm:text-xs gap-1.5 transition-all duration-200",
+          "bg-green-50 border-green-200 text-green-700 hover:bg-green-100 shadow-sm shadow-green-100"
+        )}
+        title="Hotel AI Assistant"
+      >
+        <Sparkles size={13} className="shrink-0" />
+        <span className="hidden sm:inline">Ask AI</span>
+      </button>
+
+      {/* Slide-over panel */}
+      <AnimatePresence>
+        {open && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              key="backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+              onClick={() => setOpen(false)}
+            />
+
+            {/* Panel */}
+            <motion.div
+              key="panel"
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="fixed right-0 top-0 z-50 h-full w-full max-w-[480px] flex flex-col shadow-2xl bg-white"
+            >
+              {/* Close button row */}
+              <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-green-100 shrink-0">
+                <span className="text-xs font-black uppercase tracking-widest text-green-700">AI Assistant</span>
+                <button
+                  onClick={() => setOpen(false)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Chatbot — takes remaining height */}
+              <div className="flex-1 min-h-0">
+                <AdminAIChatbot token={token} staffRole={staffRole} />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+// ─── Mobile Topbar ───────────────────────────────────────────────────────────
+
 export function Topbar() {
-  const [time, setTime] = useState(new Date());
   const [mounted, setMounted] = useState(false);
+  const { token, staff } = useAuthSession();
 
   useEffect(() => {
     setMounted(true);
-    const t = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(t);
   }, []);
 
   return (
     <header className="lg:hidden sticky top-0 z-40 w-full bg-white border-b border-gray-100 shadow-sm">
       <div className="flex h-[64px] items-center justify-between px-4 gap-3">
-        {/* Left: hamburger */}
+        {/* Left: hamburger + brand */}
         <div className="flex items-center gap-2.5">
           <Sheet>
-            <SheetTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "text-gray-500 hover:bg-gray-100")}>
+            <SheetTrigger
+              className={cn(
+                buttonVariants({ variant: "ghost", size: "icon" }),
+                "text-gray-500 hover:bg-gray-100"
+              )}
+            >
               <Menu size={22} />
             </SheetTrigger>
-            <SheetContent side="left" className="w-[240px] p-0 border-r border-gray-100 outline-none">
+            <SheetContent
+              side="left"
+              className="w-[240px] p-0 border-r border-gray-100 outline-none"
+            >
               <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
               <SidebarContent isMobile />
             </SheetContent>
           </Sheet>
 
-          {/* Center: Brand */}
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-green-600 flex items-center justify-center text-white text-[11px] font-bold shrink-0">SH</div>
-            <span className="text-sm font-bold text-gray-900 truncate max-w-[100px] xs:max-w-none">Shyam Hotel</span>
+            <div className="w-7 h-7 rounded-lg bg-green-600 flex items-center justify-center text-white text-[11px] font-bold shrink-0">
+              SH
+            </div>
+            <span className="text-sm font-bold text-gray-900 truncate max-w-[100px] xs:max-w-none">
+              Shyam Hotel
+            </span>
           </div>
         </div>
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
           <LiveUpdates />
-          <Button variant="ghost" size="icon" className="relative text-gray-500 hover:bg-gray-100 shrink-0">
+
+          {/* AI button — only renders for admin */}
+          {mounted && staff && (
+            <AIChatbotButton token={token} staffRole={staff.role} />
+          )}
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative text-gray-500 hover:bg-gray-100 shrink-0"
+          >
             <Bell size={20} />
             <span className="absolute top-2 right-2.5 h-1.5 w-1.5 rounded-full bg-red-500" />
           </Button>
@@ -173,30 +313,51 @@ export function Topbar() {
   );
 }
 
-// Desktop topbar (inside content area)
-export function DesktopTopbar({ title }: { title?: string, outlet?: string }) {
+// ─── Desktop Topbar ──────────────────────────────────────────────────────────
+
+export function DesktopTopbar({ title }: { title?: string; outlet?: string }) {
+  const [mounted, setMounted] = useState(false);
+  const { token, staff } = useAuthSession();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <div className="hidden lg:flex h-[64px] items-center justify-between px-6 bg-white border-b border-gray-100 sticky top-0 z-30">
       <h2 className="text-lg font-bold text-gray-900 tracking-tight">{title}</h2>
 
-      <div className="flex items-center gap-4">
-        {/* Updates Button (KOT Tracking) */}
+      <div className="flex items-center gap-3">
+        {/* KOT Updates */}
         <LiveUpdates />
+
+        {/* AI button — only renders for admin */}
+        {mounted && staff && (
+          <AIChatbotButton token={token} staffRole={staff.role} />
+        )}
 
         {/* Search */}
         <div className="flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2 w-52 text-sm text-gray-400 cursor-text hover:bg-gray-200 transition-colors">
           <Search size={14} />
           <span className="flex-1">Search...</span>
-          <kbd className="text-[10px] font-bold text-gray-400 border border-gray-300 rounded px-1 py-0.5">⌘K</kbd>
+          <kbd className="text-[10px] font-bold text-gray-400 border border-gray-300 rounded px-1 py-0.5">
+            ⌘K
+          </kbd>
         </div>
+
         {/* Bell */}
-        <Button variant="ghost" size="icon" className="relative text-gray-500 hover:bg-gray-100">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative text-gray-500 hover:bg-gray-100"
+        >
           <Bell size={20} />
           <span className="absolute top-2 right-2.5 h-1.5 w-1.5 rounded-full bg-red-500" />
         </Button>
+
         {/* Avatar */}
         <div className="w-8 h-8 rounded-full bg-linear-to-br from-green-500 to-green-700 flex items-center justify-center text-white font-bold text-xs cursor-pointer">
-          AS
+          {staff?.name?.slice(0, 2).toUpperCase() ?? "AS"}
         </div>
       </div>
     </div>

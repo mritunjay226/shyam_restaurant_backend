@@ -101,7 +101,7 @@ export default function ReportsPage() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <p className="text-sm font-bold text-gray-900 mb-1">Revenue by Segment</p>
             <p className="text-xs text-gray-500 mb-4">Monthly breakdown · Jan – Jun 2026</p>
-            <div className="h-[270px] min-h-0 min-w-0">
+            <div className="h-[270px] relative w-full overflow-hidden">
               {mounted && (
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={chartRevenueData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -135,7 +135,7 @@ export default function ReportsPage() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <p className="text-sm font-bold text-gray-900 mb-1">30-Day Occupancy Trend</p>
             <p className="text-xs text-gray-500 mb-4">This month's occupancy rate (%) by date</p>
-            <div className="h-[270px] min-h-0 min-w-0">
+            <div className="h-[270px] relative w-full overflow-hidden">
               {mounted && (
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <AreaChart data={chartOccupancyData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>

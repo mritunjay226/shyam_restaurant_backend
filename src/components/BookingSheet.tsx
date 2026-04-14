@@ -31,6 +31,8 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const [tariff, setTariff] = useState("0");
   const [guestName, setGuestName] = useState("");
   const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("+91");
+
   const [idType, setIdType] = useState("Aadhar");
   const [idNumber, setIdNumber] = useState("");
   const [checkIn, setCheckIn] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -81,8 +83,9 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
       await createBooking({
         roomId: room._id as any,
         guestName,
-        guestPhone: phone,
+        guestPhone: `${countryCode}${phone}`,
         idType,
+
         idNumber,
         checkIn,
         checkOut,
@@ -177,8 +180,22 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="phone" className="text-xs font-semibold text-gray-700">Phone Number</Label>
-                        <Input id="phone" value={phone} onChange={e => setPhone(e.target.value)} type="tel" placeholder="+91" onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50/50 border-gray-200" required />
+                        <div className="flex gap-2">
+                          <select 
+                            value={countryCode} 
+                            onChange={(e) => setCountryCode(e.target.value)}
+                            className="flex h-11 w-20 rounded-xl border border-gray-200 bg-gray-50/50 px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-green-500/20"
+                          >
+                            <option value="+91">+91</option>
+                            <option value="+1">+1</option>
+                            <option value="+44">+44</option>
+                            <option value="+61">+61</option>
+                            <option value="+971">+971</option>
+                          </select>
+                          <Input id="phone" value={phone} onChange={e => setPhone(e.target.value)} type="tel" placeholder="000-000-0000" onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50/50 border-gray-200 flex-1" required />
+                        </div>
                       </div>
+
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -207,12 +224,13 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold text-gray-700">Check-in</Label>
-                        <Input type="date" value={checkIn} onChange={e => setCheckIn(e.target.value)} onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50/50 border-gray-200 uppercase text-sm" />
+                        <Input type="date" value={checkIn} min={new Date().toISOString().split('T')[0]} onChange={e => setCheckIn(e.target.value)} onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50/50 border-gray-200 uppercase text-sm" />
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold text-gray-700">Check-out</Label>
-                        <Input type="date" value={checkOut} onChange={e => setCheckOut(e.target.value)} onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50/50 border-gray-200 uppercase text-sm" required />
+                        <Input type="date" value={checkOut} min={checkIn || new Date().toISOString().split('T')[0]} onChange={e => setCheckOut(e.target.value)} onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50/50 border-gray-200 uppercase text-sm" required />
                       </div>
+
                     </div>
                   </div>
 

@@ -459,7 +459,7 @@ export default function Dashboard() {
               <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded-lg">↑ 14%</span>
             </div>
           </div>
-          <div className="h-[180px] mt-4 min-h-0 min-w-0">
+          <div className="h-[180px] mt-4 relative w-full overflow-hidden">
             {mounted && (
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart data={weeklyRevenue ?? WEEK_REVENUE_FALLBACK} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barSize={26}>
