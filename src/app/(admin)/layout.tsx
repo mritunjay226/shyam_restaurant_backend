@@ -9,11 +9,11 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen w-full bg-[#F3F4F8]">
+    <div className="flex min-h-screen w-full bg-[#F3F4F8] overflow-x-hidden">
       <Sidebar />
-      <div className="flex flex-col flex-1 lg:pl-[240px]">
+      <div className="flex flex-col flex-1 min-w-0 lg:pl-[240px]">
         <Topbar />
-        <main className="flex-1 pb-20 lg:pb-0 w-full">
+        <main className="flex-1 pb-20 lg:pb-0 w-full min-w-0">
           <RoleGuard>{children}</RoleGuard>
         </main>
         <BottomNav />

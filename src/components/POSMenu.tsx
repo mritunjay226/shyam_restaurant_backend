@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Minus, ArrowRight, Printer, Search, X } from "lucide-react";
+import { Plus, Minus, ArrowRight, Printer, Search, X, UtensilsCrossed, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,13 +13,90 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { DesktopTopbar } from "@/components/Topbar";
 import { toast } from "sonner";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
-type MenuItemType = Doc<"menuItems">;
+type MenuItemType = Doc<"banquetMenuItems"> & { category?: string };
+
+// ── Local Active Orders Component ──
+function ActiveOrdersList({ outlet }: { outlet: string }) {
+  const activeOrders = useQuery(api.orders.getActiveOrdersByOutlet, { outlet });
+  const generateTableBill = useMutation(api.billing.generateTableBill);
+  
+  if (activeOrders === undefined) return <p className="text-center text-sm text-gray-400 mt-10">Loading...</p>;
+  if (activeOrders.length === 0) return <p className="text-center text-sm text-gray-400 mt-10">No active KOTs running.</p>;
+
+  // Group by table
+  const grouped = activeOrders.reduce((acc, order) => {
+    if (!acc[order.tableNumber]) acc[order.tableNumber] = [];
+    acc[order.tableNumber].push(order);
+    return acc;
+  }, {} as Record<string, typeof activeOrders>);
+
+  return (
+    <div className="space-y-4">
+      {Object.entries(grouped).map(([tableNo, orders]) => {
+        const total = orders.reduce((sum, o) => sum + o.totalAmount, 0);
+        return (
+          <div key={tableNo} className="bg-white border border-gray-100 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all">
+             <div className="flex items-center justify-between mb-3 border-b border-gray-50 pb-3">
+               <div>
+                 <h3 className="font-bold text-gray-900">{tableNo}</h3>
+                 <p className="text-[10px] text-gray-400 font-bold tracking-widest">{orders.length} ACTIVE KOT(S)</p>
+               </div>
+               <div className="text-right">
+                 <p className="font-black text-gray-900">₹{total.toLocaleString()}</p>
+                 <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-md text-[9px] font-bold uppercase shrink-0">Unbilled</span>
+               </div>
+             </div>
+             
+             {/* Show KOT details briefly */}
+             <div className="space-y-2 mb-3">
+               {orders.map(o => (
+                  <div key={o._id} className="flex justify-between items-center text-xs text-gray-500 bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-100">
+                    <span className="font-semibold">{o.kotNumber}</span>
+                    <span>₹{o.totalAmount}</span>
+                  </div>
+               ))}
+             </div>
+
+             <div className="flex gap-2">
+                <Button 
+                  onClick={async () => {
+                    try {
+                      await generateTableBill({
+                        outlet,
+                        tableNumber: tableNo,
+                        paymentMethod: "cash",
+                        isGstBill: true,
+                      });
+                      toast.success(`Bill generated for ${tableNo}`);
+                    } catch (e: any) {
+                      toast.error(e.message || "Failed to generate bill");
+                    }
+                  }}
+                  className="w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-100 transition-colors font-bold h-9 rounded-xl text-xs uppercase"
+                >
+                  Generate Bill
+                </Button>
+             </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 
 interface POSProps {
   title: string;
   items: MenuItemType[];
-  categories: string[];
+  categories: { _id: string; name: string }[];
   accentColorClass: string;
   accentBorderClass: string;
   accentTextClass: string;
@@ -37,7 +114,8 @@ const TABLES = [...Array.from({ length: 8 }).map((_, i) => `T${i + 1}`), "Walk-i
 
 export function POSMenu({ title, items, categories, accentColorClass, accentBorderClass, accentTextClass, outlet }: POSProps) {
   const [activeTable, setActiveTable] = useState("T1");
-  const [activeCategory, setActiveCategory] = useState<string>(categories[0]);
+  const [activeCategory, setActiveCategory] = useState<string | undefined>();
+  const effectiveCategory = activeCategory || categories[0]?._id;
   const [carts, setCarts] = useState<Record<string, CartItem[]>>({});
   const [isOrderSheetOpen, setIsOrderSheetOpen] = useState(false);
   const [linkToRoom, setLinkToRoom] = useState(false);
@@ -53,10 +131,9 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
 
   // Filter by category first, then by search
   const filteredItems = items.filter(i => {
-    const matchesCategory = i.subCategory === activeCategory || i.category === activeCategory;
+    const matchesCategory = i.categoryId === effectiveCategory;
     const matchesSearch = search === "" ||
-      i.name.toLowerCase().includes(search.toLowerCase()) ||
-      i.subCategory?.toLowerCase().includes(search.toLowerCase());
+      i.name.toLowerCase().includes(search.toLowerCase());
     return search ? matchesSearch : matchesCategory;
   });
 
@@ -123,7 +200,7 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
           name: c.name, 
           price: c.price, 
           quantity: c.qty, 
-          category: c.category,
+          category: c.category || "Uncategorized",
           notes: c.notes || undefined,
           course: c.course || undefined
         }))
@@ -148,7 +225,7 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
           name: c.name, 
           price: c.price, 
           quantity: c.qty, 
-          category: c.category,
+          category: c.category || "Uncategorized",
           notes: c.notes || undefined,
           course: c.course || undefined
         })),
@@ -166,37 +243,81 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
 
   const totalItems = currentCart.reduce((acc, o) => acc + o.qty, 0);
   const subtotal = currentCart.reduce((acc, o) => acc + o.qty * o.price, 0);
-  const foodGST = currentCart.filter(i => i.category === "Food").reduce((a, o) => a + o.qty * o.price, 0) * 0.05;
-  const bevGST = currentCart.filter(i => i.category === "Beverage").reduce((a, o) => a + o.qty * o.price, 0) * 0.18;
+  
+  // Tax Logic: Detect Beverages vs Food based on category name
+  const isBeverage = (catName?: string) => {
+    const name = catName?.toLowerCase() || "";
+    return name.includes("coffee") || name.includes("tea") || name.includes("mocktail") || name.includes("beverage") || name.includes("cold brew");
+  };
+
+  const foodItems = currentCart.filter(i => !isBeverage(i.category));
+  const beverageItems = currentCart.filter(i => isBeverage(i.category));
+
+  const foodGST = foodItems.reduce((a, o) => a + o.qty * o.price, 0) * 0.05;
+  const bevGST = beverageItems.reduce((a, o) => a + o.qty * o.price, 0) * 0.18;
   const grandTotal = subtotal + foodGST + bevGST;
 
   return (
-    /* Page wrapper: flex column, NO min-h-screen (causes iOS issues), clip overflow */
-    <div className="flex flex-col bg-gray-50/50" style={{ minHeight: "100dvh", overflowX: "clip" }}>
+    /* Page wrapper: flex column */
+    <div className="flex flex-col flex-1 w-full min-w-0 bg-gray-50/50">
       <DesktopTopbar title={title} outlet={outlet} />
 
-      <div className="flex-1 flex flex-col w-full max-w-[1600px] mx-auto px-3 pt-3 pb-36 sm:px-6 sm:pt-5 lg:px-8">
+      <div className="flex-1 flex flex-col min-w-0 w-full max-w-7xl mx-auto px-4 pt-3 pb-36 sm:px-6 sm:pt-5 lg:px-8">
 
         {/* ── Header ── */}
-        <div className="mb-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">POS Terminal</p>
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-gray-900 tracking-tight">{title} Orders</h1>
+        <div className="mb-4 flex items-center justify-between shrink-0">
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">POS Terminal</p>
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-gray-900 tracking-tight">{title} Orders</h1>
+          </div>
+          
+          <Sheet>
+            <SheetTrigger 
+              render={
+                <Button variant="outline" className="h-10 rounded-xl gap-2 font-bold text-gray-700 bg-white shadow-sm border border-gray-200 shrink-0" />
+              }
+            >
+              <Receipt className="w-4 h-4" />
+              <span className="hidden sm:inline">Active KOTs</span>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col bg-gray-50/50">
+              <SheetHeader className="p-6 bg-white border-b border-gray-100 shrink-0">
+                <SheetTitle className="text-xl font-black text-gray-900 flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-emerald-500" />
+                  Active KOTs
+                </SheetTitle>
+              </SheetHeader>
+              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                 <ActiveOrdersList outlet={outlet} />
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
 
-        {/* ── Table Selector ── flex-wrap on mobile so all fit nicely without clipping */}
+        {/* ── Table Selector ── */}
         <div className="mb-4">
           <div
-            className="flex flex-wrap gap-1.5 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm"
+            className="flex flex-nowrap gap-1.5 overflow-x-auto pb-2 custom-scrollbar scrollbar-hide sm:scrollbar-default scroll-smooth w-full"
           >
             {TABLES.map(t => (
               <button
                 key={t}
-                onClick={() => setActiveTable(t)}
+                id={`table-${t}`}
+                onClick={(e) => {
+                  setActiveTable(t);
+                  // Smoothly scroll the container to center the selected table
+                  const target = e.currentTarget;
+                  const container = target.parentElement;
+                  if (container) {
+                    const scrollLeft = target.offsetLeft - (container.clientWidth / 2) + (target.clientWidth / 2);
+                    container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+                  }
+                }}
                 className={cn(
-                  "px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap",
+                  "px-4 py-2 rounded-full text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0",
                   activeTable === t
-                    ? "bg-gray-900 text-white shadow-sm"
-                    : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                    ? "bg-gray-900 border-gray-900 text-white shadow-md shadow-gray-200"
+                    : "bg-white border-gray-100 text-gray-500 hover:text-gray-900 hover:border-gray-300"
                 )}
               >
                 {t.startsWith("T") && t.length === 2 ? `Table ${t.slice(1)}` : t}
@@ -224,23 +345,33 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
           )}
         </div>
 
-        {/* ── Category Pills ── only shown when not searching */}
+        {/* ── Category Rail ── only shown when not searching */}
         {!search && (
           <div
-            className="flex flex-wrap gap-1.5 mb-5"
+            className="flex flex-nowrap gap-1.5 mb-5 overflow-x-auto pb-2 custom-scrollbar scrollbar-hide sm:scrollbar-default scroll-smooth w-full"
           >
             {categories.map(c => (
               <button
-                key={c}
-                onClick={() => setActiveCategory(c)}
+                key={c._id}
+                id={`cat-${c._id}`}
+                onClick={(e) => {
+                  setActiveCategory(c._id);
+                  // Smoothly scroll the container, not the whole page
+                  const target = e.currentTarget;
+                  const container = target.parentElement;
+                  if (container) {
+                    const scrollLeft = target.offsetLeft - (container.clientWidth / 2) + (target.clientWidth / 2);
+                    container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+                  }
+                }}
                 className={cn(
-                  "px-4 py-2 rounded-full text-sm font-bold border transition-all whitespace-nowrap",
-                  activeCategory === c
-                    ? "bg-white border-gray-900 text-gray-900 shadow-sm"
-                    : "bg-transparent border-transparent text-gray-500 hover:text-gray-900"
+                  "px-4 py-2 rounded-full text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0",
+                  effectiveCategory === c._id
+                    ? "bg-gray-900 border-gray-900 text-white shadow-md shadow-gray-200"
+                    : "bg-white border-gray-100 text-gray-500 hover:text-gray-900 hover:border-gray-300"
                 )}
               >
-                {c}
+                {c.name}
               </button>
             ))}
           </div>
@@ -262,36 +393,66 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg hover:shadow-gray-200/50 transition-all cursor-pointer relative overflow-hidden"
+                className={cn(
+                  "group relative overflow-hidden bg-white rounded-3xl border border-gray-100 shadow-sm transition-all duration-300 ease-out cursor-pointer p-4 md:p-5 hover:-translate-y-1 hover:shadow-xl hover:shadow-gray-200/50 hover:border-gray-200",
+                  currentCart.find(i => i._id === item._id) && "ring-2 ring-gray-900 ring-offset-2"
+                )}
                 onClick={() => addToCart(item)}
               >
-                {/* Thumbnail */}
-                {item.image ? (
-                  <div className="h-28 w-full overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={item.image}
-                      alt={item.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                  </div>
-                ) : null}
-                <div className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center bg-gray-50 group-hover:bg-gray-900 transition-colors shrink-0")}>
-                      <Plus className="w-3.5 h-3.5 text-gray-400 group-hover:text-white transition-colors" />
+                <div className="flex flex-col h-full justify-between gap-4">
+                  <div>
+                    <div className="flex items-start justify-between mb-2">
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-[0.15em] leading-none mt-1">
+                        {item.category}
+                      </p>
+                      
+                      {/* Authentic Veg/Non-Veg Indian Standard Indicator */}
+                      {item.dietaryType && (
+                        <div className={cn(
+                          "flex items-center justify-center w-3.5 h-3.5 border shrink-0 bg-white shadow-sm",
+                          item.dietaryType === "veg" ? "border-green-600" : 
+                          item.dietaryType === "non-veg" ? "border-red-600" : "border-yellow-600"
+                        )}>
+                          <div className={cn(
+                            "w-1.5 h-1.5 rounded-full",
+                            item.dietaryType === "veg" ? "bg-green-600" : 
+                            item.dietaryType === "non-veg" ? "bg-red-600" : "bg-yellow-600"
+                          )} />
+                        </div>
+                      )}
                     </div>
-                    <div className={`w-2 h-2 rounded-full mt-1 ${item.category === "Food" ? "bg-rose-500" : "bg-emerald-500"}`} />
-                  </div>
-                  <h4 className="font-bold text-gray-900 text-sm leading-tight mb-0.5 group-hover:text-indigo-600 transition-colors line-clamp-2">{item.name}</h4>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-2">{item.subCategory}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-base font-black text-gray-900 tabular-nums">₹{item.price}</span>
-                    {currentCart.find(i => i._id === item._id) && (
-                      <span className="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md">
-                        {currentCart.find(i => i._id === item._id)?.qty}×
-                      </span>
+                    
+                    <h4 className="font-extrabold text-gray-900 text-sm sm:text-base leading-tight">
+                      {item.name}
+                    </h4>
+                    
+                    {item.description && (
+                      <p className="text-[10px] text-gray-500 font-medium mt-1.5 line-clamp-2 leading-relaxed">
+                        {item.description}
+                      </p>
                     )}
+                  </div>
+
+                  <div className="flex items-end justify-between pt-2">
+                    <div className="flex flex-col">
+                      <span className="text-lg font-black text-gray-900 tabular-nums">
+                        ₹{item.price}
+                      </span>
+                      {item.unit && (
+                        <span className="text-[9px] font-bold text-gray-400 uppercase">Per {item.unit}</span>
+                      )}
+                    </div>
+
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center bg-gray-50 group-hover:bg-gray-900 transition-all duration-300 shadow-sm group-active:scale-90",
+                      currentCart.find(i => i._id === item._id) && "bg-gray-900 text-white"
+                    )}>
+                      {currentCart.find(i => i._id === item._id) ? (
+                        <span className="text-[10px] font-black">{currentCart.find(i => i._id === item._id)?.qty}×</span>
+                      ) : (
+                        <Plus className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" />
+                      )}
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -307,7 +468,7 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
             </div>
             <h3 className="font-bold text-gray-900">Nothing found</h3>
             <p className="text-sm text-gray-400 mt-1">
-              {search ? `No items match "${search}"` : `No items in ${activeCategory}`}
+              {search ? `No items match "${search}"` : `No items in this category`}
             </p>
           </div>
         )}

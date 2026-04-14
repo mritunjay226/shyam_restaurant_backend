@@ -11,6 +11,7 @@
 import type * as aiChatbot from "../aiChatbot.js";
 import type * as auth from "../auth.js";
 import type * as banquet from "../banquet.js";
+import type * as banquetMenu from "../banquetMenu.js";
 import type * as billing from "../billing.js";
 import type * as bookings from "../bookings.js";
 import type * as guests from "../guests.js";
@@ -19,8 +20,10 @@ import type * as orders from "../orders.js";
 import type * as reports from "../reports.js";
 import type * as rooms from "../rooms.js";
 import type * as seed from "../seed.js";
+import type * as seed2 from "../seed2.js";
 import type * as settings from "../settings.js";
 import type * as staff from "../staff.js";
+import type * as wipe from "../wipe.js";
 
 import type {
   ApiFromModules,
@@ -32,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   aiChatbot: typeof aiChatbot;
   auth: typeof auth;
   banquet: typeof banquet;
+  banquetMenu: typeof banquetMenu;
   billing: typeof billing;
   bookings: typeof bookings;
   guests: typeof guests;
@@ -40,8 +44,10 @@ declare const fullApi: ApiFromModules<{
   reports: typeof reports;
   rooms: typeof rooms;
   seed: typeof seed;
+  seed2: typeof seed2;
   settings: typeof settings;
   staff: typeof staff;
+  wipe: typeof wipe;
 }>;
 
 /**

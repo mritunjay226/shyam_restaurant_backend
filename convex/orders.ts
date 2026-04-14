@@ -142,7 +142,7 @@ export const createOrder = mutation({
     takenById: v.optional(v.id("staff")),   // who is placing the order
     items: v.array(
       v.object({
-        menuItemId: v.id("menuItems"),
+        menuItemId: v.union(v.id("banquetMenuItems"), v.id("menuItems")),
         name: v.string(),
         price: v.number(),
         quantity: v.number(),
@@ -193,7 +193,7 @@ export const addItemsToOrder = mutation({
     orderId: v.id("orders"),
     newItems: v.array(
       v.object({
-        menuItemId: v.id("menuItems"),
+        menuItemId: v.union(v.id("banquetMenuItems"), v.id("menuItems")),
         name: v.string(),
         price: v.number(),
         quantity: v.number(),

@@ -68,7 +68,7 @@ export default defineSchema({
     kotNumber: v.optional(v.string()),           // "KOT-2025-0001"
     takenById: v.optional(v.id("staff")),        // who created the order
     items: v.array(v.object({
-      menuItemId: v.id("menuItems"),
+      menuItemId: v.union(v.id("banquetMenuItems"), v.id("menuItems")),
       name: v.string(),
       price: v.number(),
       quantity: v.number(),
@@ -201,4 +201,40 @@ export default defineSchema({
     .index("by_timestamp", ["timestamp"])
     .index("by_staff", ["staffId"]),
 
+  categories: defineTable({
+    name: v.string(), 
+    description: v.optional(v.string()),
+    sortOrder: v.optional(v.number()), // Useful for maintaining the menu's visual order
+  }),
+
+  // The actual food and beverage items
+  banquetMenuItems: defineTable({
+    categoryId: v.id("categories"),
+    name: v.string(), // e.g., "VIRGIN PINA COLADA", "Classic Margherita" [cite: 29, 48]
+    
+    // Optional description for ingredients, e.g., "Pineapple Juice, Fresh Coconut Cream" 
+    description: v.optional(v.string()), 
+    
+    // The base price of the item
+    price: v.number(), 
+    
+    // To handle prices attached to quantities, e.g., "scoop" or "2 pcs" [cite: 76, 78]
+    unit: v.optional(v.string()), 
+    
+    // Categorizing items to match the menu's Veg/NonVeg/Egg sections 
+    dietaryType: v.optional(
+      v.union(v.literal("veg"), v.literal("non-veg"), v.literal("egg"))
+    ), 
+    
+    // To handle restricted timing like Breakfast: "7:00 AM - 10:30 AM" 
+    availabilityWindow: v.optional(v.string()), 
+    
+    isAvailable: v.boolean(), // Quick toggle to mark items out of stock
+
+    image: v.optional(v.string()), // For Cafe/Restaurant views
+  })
+  // Index to quickly fetch all items under a specific menu category
+  .index("by_category", ["categoryId"])
+  // Index to filter items by dietary preference
+  .index("by_dietary", ["dietaryType"]),
 });

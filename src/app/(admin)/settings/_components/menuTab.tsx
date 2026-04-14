@@ -74,7 +74,6 @@ export function MenuTab() {
                 menuItemId: editMenuItem._id,
                 name: editMenuItem.name,
                 category: editMenuItem.category,
-                subCategory: editMenuItem.subCategory,
                 price: parseInt(editMenuItem.price || "0"),
                 image: editMenuItem.image || undefined,
             });

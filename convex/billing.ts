@@ -300,7 +300,7 @@ export const directCheckoutOrder = mutation({
     tableNumber: v.string(), // "Walk-in" or "Takeaway"
     items: v.array(
       v.object({
-        menuItemId: v.id("menuItems"),
+        menuItemId: v.union(v.id("banquetMenuItems"), v.id("menuItems")),
         name: v.string(),
         price: v.number(),
         quantity: v.number(),
