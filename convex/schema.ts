@@ -132,6 +132,8 @@ export default defineSchema({
     cgst: v.number(),
     sgst: v.number(),
     totalAmount: v.number(),
+    advancePaid: v.optional(v.number()),   // ← new
+    amountDue: v.optional(v.number()),
     paymentMethod: v.optional(v.string()),
     splitPayments: v.optional(v.array(v.object({
       method: v.string(),

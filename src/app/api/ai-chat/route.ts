@@ -204,11 +204,11 @@ const HOTEL_TOOLS = [
 function buildSystemPrompt(today: string): string {
   const d = new Date(today);
   const fmt = (dt: Date) => dt.toISOString().split("T")[0];
-  const yesterday    = fmt(new Date(d.getTime() - 86400000));
-  const last7        = fmt(new Date(d.getTime() - 6 * 86400000));
-  const last30       = fmt(new Date(d.getTime() - 29 * 86400000));
-  const monthStart   = `${today.slice(0, 8)}01`;
-  const prevMonthEnd   = fmt(new Date(d.getFullYear(), d.getMonth(), 0));
+  const yesterday = fmt(new Date(d.getTime() - 86400000));
+  const last7 = fmt(new Date(d.getTime() - 6 * 86400000));
+  const last30 = fmt(new Date(d.getTime() - 29 * 86400000));
+  const monthStart = `${today.slice(0, 8)}01`;
+  const prevMonthEnd = fmt(new Date(d.getFullYear(), d.getMonth(), 0));
   const prevMonthStart = fmt(new Date(d.getFullYear(), d.getMonth() - 1, 1));
 
   return `Hotel Admin AI. Today: ${today}.
@@ -227,6 +227,7 @@ Rules:
 5. Currency: Rs. X,XX,XXX. Always show totals + payment method split for revenue queries.
 6. Match user language: English / Hindi / Hinglish.
 7. Never reveal staff PINs.
+8. If i ask like give me phone number of guest "x" in room "y" you should be able to answer
 
 Format: Markdown. Tables for 3+ items. Lead with key figure. On partial tool failure, answer with what succeeded and note what failed.`;
 }
@@ -452,7 +453,7 @@ export async function POST(req: NextRequest) {
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const systemPrompt = buildSystemPrompt(today);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
 
     const contents: GeminiContent[] = [
       ...history,

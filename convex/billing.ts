@@ -21,12 +21,10 @@ export const getBillsByDate = query({
 
 // GET BILLS BY MONTH
 export const getBillsByMonth = query({
-  args: { month: v.string() }, // "2024-11"
+  args: { month: v.string() },
   handler: async (ctx, args) => {
     const allBills = await ctx.db.query("bills").collect();
-    return allBills.filter((bill) =>
-      bill.createdAt.startsWith(args.month)
-    );
+    return allBills.filter((bill) => bill.createdAt.startsWith(args.month));
   },
 });
 
@@ -43,14 +41,24 @@ export const generateRoomBill = mutation({
     extraCharge: v.optional(v.number()),
     splitPayments: v.optional(v.array(v.object({
       method: v.string(),
-      amount: v.number()
+      amount: v.number(),
     }))),
   },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
 
-    // get linked restaurant/cafe orders
+    // Recalculate actual nights stayed server-side
+    const checkInDate = new Date(booking.checkIn);
+    const today = new Date();
+    let nights = Math.floor(
+      (today.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    if (nights === 0) nights = 1;
+
+    const roomTotal = booking.tariff * nights;
+
+    // Get linked restaurant/cafe orders
     const linkedOrders = await ctx.db
       .query("orders")
       .filter((q) =>
@@ -66,30 +74,32 @@ export const generateRoomBill = mutation({
       0
     );
 
-    let subtotal = booking.totalAmount + orderTotal;
-    
-    // Apply Additional Charges
+    let subtotal = roomTotal + orderTotal;
+
+    // Apply additional charges
     const sc = args.serviceCharge || 0;
     const hc = args.housekeepingCharge || 0;
     const ec = args.extraCharge || 0;
     subtotal += sc + hc + ec;
 
-    // Apply Discount
+    // Apply discount
     const discount = args.discountAmount || 0;
     subtotal = Math.max(0, subtotal - discount);
 
+    // GST on full subtotal (after charges & discount)
     let cgst = 0;
     let sgst = 0;
-
     if (args.isGstBill) {
-      // 6% CGST + 6% SGST = 12% GST on room
-      cgst = booking.totalAmount * 0.06;
-      sgst = booking.totalAmount * 0.06;
+      cgst = subtotal * 0.06;
+      sgst = subtotal * 0.06;
     }
 
     const totalAmount = subtotal + cgst + sgst;
 
-    // create bill
+    // Advance deduction
+    const advance = booking.advance || 0;
+    const amountDue = Math.max(0, totalAmount - advance);
+
     const billId = await ctx.db.insert("bills", {
       billType: "room",
       referenceId: args.bookingId,
@@ -104,13 +114,15 @@ export const generateRoomBill = mutation({
       cgst: Math.round(cgst * 100) / 100,
       sgst: Math.round(sgst * 100) / 100,
       totalAmount: Math.round(totalAmount * 100) / 100,
+      advancePaid: advance > 0 ? advance : undefined,
+      amountDue: Math.round(amountDue * 100) / 100,
       paymentMethod: args.paymentMethod,
       splitPayments: args.splitPayments,
       status: "generated",
       createdAt: new Date().toISOString().split("T")[0],
     });
 
-    // mark linked orders as paid
+    // Mark linked orders as paid
     for (const order of linkedOrders) {
       await ctx.db.patch(order._id, { status: "paid" });
     }
@@ -135,7 +147,6 @@ export const generateOrderBill = mutation({
     let sgst = 0;
 
     if (args.isGstBill) {
-      // split gstAmount into CGST and SGST equally
       cgst = order.gstAmount / 2;
       sgst = order.gstAmount / 2;
     }
@@ -157,9 +168,7 @@ export const generateOrderBill = mutation({
       createdAt: new Date().toISOString().split("T")[0],
     });
 
-    // mark order as paid
     await ctx.db.patch(args.orderId, { status: "paid" });
-
     return billId;
   },
 });
@@ -201,9 +210,7 @@ export const generateBanquetBill = mutation({
       createdAt: new Date().toISOString().split("T")[0],
     });
 
-    // mark banquet booking as completed
     await ctx.db.patch(args.banquetBookingId, { status: "completed" });
-
     return billId;
   },
 });
@@ -223,16 +230,16 @@ export const generateTableBill = mutation({
     extraCharge: v.optional(v.number()),
     splitPayments: v.optional(v.array(v.object({
       method: v.string(),
-      amount: v.number()
+      amount: v.number(),
     }))),
   },
   handler: async (ctx, args) => {
     const orders = await ctx.db
       .query("orders")
-      .withIndex("by_outlet_table", (q) => 
+      .withIndex("by_outlet_table", (q) =>
         q.eq("outlet", args.outlet).eq("tableNumber", args.tableNumber)
       )
-      .filter((q) => 
+      .filter((q) =>
         q.and(
           q.eq(q.field("roomId"), undefined),
           q.neq(q.field("status"), "paid")
@@ -240,25 +247,22 @@ export const generateTableBill = mutation({
       )
       .collect();
 
-    if (orders.length === 0) throw new Error("No unbilled orders found for this table");
+    if (orders.length === 0)
+      throw new Error("No unbilled orders found for this table");
 
     let subtotal = orders.reduce((sum, order) => sum + order.subtotal, 0);
 
-    // Apply Additional Charges
     const sc = args.serviceCharge || 0;
     const hc = args.housekeepingCharge || 0;
     const ec = args.extraCharge || 0;
     subtotal += sc + hc + ec;
 
-    // Apply discount
     const discount = args.discountAmount || 0;
     subtotal = Math.max(0, subtotal - discount);
 
     let cgst = 0;
     let sgst = 0;
-
     if (args.isGstBill) {
-      // 6% CGST + 6% SGST on final subtotal (after discount & SC)
       cgst = subtotal * 0.06;
       sgst = subtotal * 0.06;
     }
@@ -297,7 +301,7 @@ export const generateTableBill = mutation({
 export const directCheckoutOrder = mutation({
   args: {
     outlet: v.string(),
-    tableNumber: v.string(), // "Walk-in" or "Takeaway"
+    tableNumber: v.string(),
     items: v.array(
       v.object({
         menuItemId: v.union(v.id("banquetMenuItems"), v.id("menuItems")),
@@ -319,11 +323,8 @@ export const directCheckoutOrder = mutation({
 
     args.items.forEach((item) => {
       const itemTotal = item.price * item.quantity;
-      if (item.category === "Beverage") {
-        beverageTotal += itemTotal;
-      } else {
-        foodTotal += itemTotal;
-      }
+      if (item.category === "Beverage") beverageTotal += itemTotal;
+      else foodTotal += itemTotal;
     });
 
     const subtotal = foodTotal + beverageTotal;
@@ -339,7 +340,6 @@ export const directCheckoutOrder = mutation({
 
     const totalAmount = subtotal + gstAmount;
 
-    // Create the order
     const orderId = await ctx.db.insert("orders", {
       outlet: args.outlet,
       tableNumber: args.tableNumber,
@@ -347,12 +347,11 @@ export const directCheckoutOrder = mutation({
       subtotal: Math.round(subtotal * 100) / 100,
       gstAmount: Math.round(gstAmount * 100) / 100,
       totalAmount: Math.round(totalAmount * 100) / 100,
-      status: "paid", // Already paid
+      status: "paid",
       kotGenerated: true,
       createdAt: new Date().toISOString(),
     });
 
-    // Directly generate bills
     const billId = await ctx.db.insert("bills", {
       billType: args.outlet,
       referenceId: orderId,

@@ -3,12 +3,6 @@
 // ─────────────────────────────────────────────────────────────────
 // AdminAIChatbot.tsx
 // src/components/AdminAIChatbot.tsx
-//
-// .env.local:
-//   GEMINI_KEY=your_key_here      ← server-side only, never NEXT_PUBLIC_
-//   CONVEX_URL=https://xxx.convex.cloud
-//
-// Usage: <AdminAIChatbot token={authToken} staffRole={staff.role} />
 // ─────────────────────────────────────────────────────────────────
 
 import {
@@ -28,8 +22,6 @@ interface Message {
   content: string;
 }
 
-// Gemini conversation turn — stored in state so multi-turn context
-// is preserved across messages without re-fetching anything.
 interface GeminiTurn {
   role: string;
   parts: Array<{ text?: string; functionCall?: unknown; functionResponse?: unknown }>;
@@ -40,7 +32,7 @@ interface Props {
   staffRole: string;
 }
 
-// ─── Call our own API route (key never leaves the server) ─────────
+// ─── API call ────────────────────────────────────────────────────
 
 async function sendMessage(
   token: string,
@@ -48,8 +40,6 @@ async function sendMessage(
   userMessage: string,
   onStatus: (msg: string) => void
 ): Promise<{ text: string; toolsUsed: string[] }> {
-  // Stream status updates by polling — the fetch itself is a single
-  // round-trip but we want to show "Thinking…" while waiting.
   onStatus("Thinking…");
 
   const res = await fetch("/api/ai-chat", {
@@ -153,43 +143,9 @@ function TypingIndicator({ status }: { status: string }) {
   );
 }
 
-// ─── Keyboard viewport hook ───────────────────────────────────────
-
-function useKeyboardHandling() {
-  const [viewportHeight, setViewportHeight] = useState("100%");
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
-
-  useEffect(() => {
-    if (!window.visualViewport) return;
-    
-    const handleResize = () => {
-      const v = window.visualViewport;
-      if (v) {
-        // Force the exact available visual height
-        setViewportHeight(`${v.height}px`);
-        // If the visual viewport is significantly smaller than the window, keyboard is likely open
-        setIsKeyboardOpen(window.innerHeight - v.height > 150);
-      }
-    };
-
-    window.visualViewport.addEventListener("resize", handleResize);
-    window.visualViewport.addEventListener("scroll", handleResize);
-    
-    handleResize(); // Initialize immediately on mount
-
-    return () => {
-      window.visualViewport?.removeEventListener("resize", handleResize);
-      window.visualViewport?.removeEventListener("scroll", handleResize);
-    };
-  }, []);
-
-  return { viewportHeight, isKeyboardOpen };
-}
-
 // ─── Main component ──────────────────────────────────────────────
 
 export default function AdminAIChatbot({ token, staffRole }: Props) {
-  // Visible chat messages (user + assistant bubbles)
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -198,28 +154,27 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
     },
   ]);
 
-  // Full Gemini conversation history (includes tool turns, never shown to user)
-  // Starts empty — the first user message seeds it.
   const [geminiHistory, setGeminiHistory] = useState<GeminiTurn[]>([]);
-
   const [input, setInput]             = useState("");
   const [loading, setLoading]         = useState(false);
   const [fetchStatus, setFetchStatus] = useState("");
 
   const bottomRef   = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  
-  // New hook integration
-  const { viewportHeight, isKeyboardOpen } = useKeyboardHandling();
+  const scrollRef   = useRef<HTMLDivElement>(null);
 
-  // Lightweight status bar query — only counts + today's revenue
   const stats = useQuery(
     api.aiChatbot.getStatsSummary,
     staffRole === "admin" ? { token } : "skip"
   );
 
+  // Scroll to bottom whenever messages or loading state changes
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Small timeout ensures the DOM has painted the new bubble first
+    const t = setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
+    return () => clearTimeout(t);
   }, [messages, loading]);
 
   const handleSend = useCallback(
@@ -228,9 +183,11 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
       if (!text || loading) return;
 
       setInput("");
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
+      // Reset textarea height
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
 
-      // Show user bubble immediately
       setMessages((prev) => [...prev, { role: "user", content: text }]);
       setLoading(true);
       setFetchStatus("Thinking…");
@@ -243,17 +200,13 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
           (status) => setFetchStatus(status)
         );
 
-        // Append assistant bubble
         setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-
-        // Update Gemini history with this full round-trip so context carries forward
         setGeminiHistory((prev) => [
           ...prev,
           { role: "user",  parts: [{ text }] },
           { role: "model", parts: [{ text: reply }] },
         ]);
 
-        // Optional: log which tools were used (visible in dev console)
         if (toolsUsed.length > 0) {
           console.debug("[AI] tools used:", toolsUsed.join(", "));
         }
@@ -291,14 +244,147 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
           0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
           40%           { transform: translateY(-4px); opacity: 1; }
         }
+
+        /*
+         * THE KEY FIX — professional chat layout:
+         *
+         * The outer wrapper uses 100dvh (dynamic viewport height).
+         * dvh automatically shrinks when the software keyboard appears,
+         * so the whole shell shrinks to fit the visible area.
+         * No JS resize listeners, no visualViewport hacks needed.
+         *
+         * The input bar uses padding-bottom: env(safe-area-inset-bottom)
+         * to respect iPhone home indicator and notch insets.
+         *
+         * The message area is flex-1 + overflow-y-auto — it fills whatever
+         * space is left between the status bar and the input bar.
+         * When the keyboard appears, dvh shrinks, flex-1 shrinks, scroll works.
+         */
+        .ai-chat-shell {
+          display: flex;
+          flex-direction: column;
+          /* dvh = dynamic viewport height — shrinks when keyboard opens */
+          height: 100dvh;
+          /* Fallback for browsers that don't support dvh */
+          height: 100vh;
+          height: 100dvh;
+          width: 100%;
+          background: white;
+          font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .ai-status-bar {
+          flex-shrink: 0;
+          z-index: 10;
+        }
+
+        .ai-messages-area {
+          flex: 1;
+          overflow-y: auto;
+          /* Prevents rubber-band from causing content to go behind input */
+          overscroll-behavior-y: contain;
+          /* Scrollbar styling */
+          scrollbar-width: thin;
+          scrollbar-color: #bbf7d0 transparent;
+        }
+        .ai-messages-area::-webkit-scrollbar { width: 4px; }
+        .ai-messages-area::-webkit-scrollbar-track { background: transparent; }
+        .ai-messages-area::-webkit-scrollbar-thumb { background: #bbf7d0; border-radius: 9999px; }
+
+        .ai-input-bar {
+          flex-shrink: 0;
+          /* Critical: safe-area padding for iPhone notch/home indicator */
+          padding-bottom: max(12px, env(safe-area-inset-bottom));
+          border-top: 1px solid #f3f4f6;
+          background: #FAFFFE;
+          /* Prevent input bar from being pushed up awkwardly */
+          position: relative;
+        }
+
+        .ai-textarea {
+          flex: 1;
+          border: 1.5px solid #e5e7eb;
+          border-radius: 14px;
+          padding: 10px 14px;
+          font-size: 14px;
+          line-height: 1.5;
+          font-family: inherit;
+          color: #111827;
+          resize: none;
+          background: white;
+          transition: border-color 0.15s, box-shadow 0.15s;
+          overflow: hidden;
+          max-height: 120px;
+          /* Prevent iOS zoom on focus (font-size must be ≥16px OR explicitly set) */
+          font-size: max(16px, 14px);
+          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .ai-textarea:focus {
+          outline: none;
+          border-color: #16a34a;
+          box-shadow: 0 0 0 3px rgba(22,163,74,0.1);
+        }
+        .ai-textarea::placeholder { color: #9ca3af; }
+
+        .ai-send-btn {
+          width: 44px;
+          height: 44px;
+          border-radius: 14px;
+          background: #16a34a;
+          border: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+          box-shadow: 0 4px 12px rgba(22,163,74,0.25);
+        }
+        .ai-send-btn:hover:not(:disabled) {
+          background: #15803d;
+          box-shadow: 0 4px 16px rgba(22,163,74,0.35);
+          transform: translateY(-1px);
+        }
+        .ai-send-btn:active:not(:disabled) { transform: translateY(0); }
+        .ai-send-btn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+
+        .ai-chip {
+          padding: 6px 14px;
+          border-radius: 9999px;
+          border: 1px solid #bbf7d0;
+          background: #f0fdf4;
+          color: #15803d;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background 0.12s, border-color 0.12s, transform 0.1s;
+          white-space: nowrap;
+          font-family: inherit;
+        }
+        .ai-chip:hover { background: #dcfce7; border-color: #4ade80; }
+        .ai-chip:active { transform: scale(0.96); }
+
+        @media (min-width: 640px) {
+          .ai-chat-shell {
+            max-width: 768px;
+            margin: 0 auto;
+            border-left: 1px solid #f3f4f6;
+            border-right: 1px solid #f3f4f6;
+            box-shadow: 0 0 0 1px #f3f4f6;
+          }
+        }
       `}</style>
 
-      <div
-        className="flex flex-col bg-white font-sans transition-[height] duration-150 ease-out sm:max-w-3xl sm:mx-auto sm:border-x sm:border-gray-100 sm:shadow-sm"
-        style={{ height: viewportHeight }}
-      >
+      <div className="ai-chat-shell">
+
         {/* ── Status bar ── */}
-        <div className="px-4 py-2.5 border-b border-green-50/50 bg-[#FAFFFE] flex items-center gap-2.5 shrink-0 z-10 shadow-sm">
+        <div className="ai-status-bar px-4 py-2.5 border-b border-green-50/70 bg-[#FAFFFE] flex items-center gap-2.5 shadow-sm">
           <div className="relative flex h-2 w-2">
             <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${stats ? "bg-green-500" : "bg-amber-400"}`} />
             <span className={`relative inline-flex rounded-full h-2 w-2 ${stats ? "bg-green-600" : "bg-amber-500"}`} />
@@ -311,7 +397,7 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
         </div>
 
         {/* ── Messages ── */}
-        <div className="flex-1 overflow-y-auto px-4 pt-5 pb-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-green-200 [&::-webkit-scrollbar-thumb]:rounded-full">
+        <div ref={scrollRef} className="ai-messages-area px-4 pt-5 pb-3">
           {messages.map((msg, i) =>
             msg.role === "assistant" ? (
               <AssistantBubble key={i} content={msg.content} />
@@ -320,17 +406,18 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
             )
           )}
           {loading && <TypingIndicator status={fetchStatus} />}
+          {/* This div is scrolled into view after each new message */}
           <div ref={bottomRef} className="h-1" />
         </div>
 
-        {/* ── Suggestion chips ── */}
+        {/* ── Suggestion chips (shown only on first load) ── */}
         {messages.length === 1 && (
-          <div className="px-4 pb-3 flex flex-wrap gap-2 animate-[aiFadeUp_0.4s_ease-out_forwards]">
+          <div className="px-4 pb-3 flex flex-wrap gap-2 shrink-0 animate-[aiFadeUp_0.4s_ease-out_forwards]">
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
+                className="ai-chip"
                 onClick={() => void handleSend(s)}
-                className="px-3.5 py-1.5 rounded-full border border-green-200 bg-green-50 text-green-700 text-[12px] font-semibold cursor-pointer transition-all hover:bg-green-100 hover:border-green-400 hover:scale-[1.02] active:scale-95 whitespace-nowrap"
               >
                 {s}
               </button>
@@ -338,38 +425,35 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
           </div>
         )}
 
-        {/* ── Input ── */}
-        <div className="px-3 sm:px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] border-t border-gray-100 bg-[#FAFFFE] flex gap-2.5 items-end shrink-0">
+        {/* ── Input bar ── */}
+        <div className="ai-input-bar px-3 sm:px-4 pt-3 flex gap-2.5 items-end">
           <textarea
             ref={textareaRef}
+            className="ai-textarea"
             value={input}
+            rows={1}
+            placeholder="Ask anything about your hotel…"
             onChange={(e) => {
               setInput(e.target.value);
+              // Auto-grow
               e.currentTarget.style.height = "auto";
               e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 120) + "px";
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything about your hotel…"
-            rows={1}
-            className="flex-1 border-1.5 border-gray-200 rounded-[14px] px-3.5 py-3 text-[14px] text-gray-900 resize-none leading-relaxed bg-white transition-all focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-500/10 placeholder:text-gray-400 overflow-hidden shadow-sm"
           />
           <button
+            className="ai-send-btn"
             onClick={() => void handleSend()}
             disabled={loading || !input.trim()}
-            className="w-[44px] h-[44px] rounded-[14px] bg-green-600 border-none cursor-pointer flex items-center justify-center shrink-0 transition-all duration-200 shadow-[0_4px_12px_rgba(22,163,74,0.25)] hover:bg-green-700 hover:shadow-[0_4px_16px_rgba(22,163,74,0.35)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-[0_4px_12px_rgba(22,163,74,0.25)]"
+            aria-label="Send message"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="ml-0.5 mt-0.5">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 2, marginTop: 2 }}>
               <path d="M22 2L11 13" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
               <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         </div>
 
-        {/* ── Mobile bottom nav spacer ── */}
-        <div
-          className="md:hidden shrink-0 transition-[height] duration-150 ease-out bg-[#FAFFFE]"
-          style={{ height: isKeyboardOpen ? 0 : 64 }}
-        />
       </div>
     </>
   );
