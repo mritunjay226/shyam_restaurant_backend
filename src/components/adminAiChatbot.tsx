@@ -153,24 +153,37 @@ function TypingIndicator({ status }: { status: string }) {
   );
 }
 
-// ─── Keyboard offset hook ─────────────────────────────────────────
+// ─── Keyboard viewport hook ───────────────────────────────────────
 
-function useKeyboardOffset() {
-  const [offset, setOffset] = useState(0);
+function useKeyboardHandling() {
+  const [viewportHeight, setViewportHeight] = useState("100%");
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
   useEffect(() => {
     if (!window.visualViewport) return;
-    const handle = () => {
+    
+    const handleResize = () => {
       const v = window.visualViewport;
-      if (v) setOffset(Math.max(0, window.innerHeight - v.height));
+      if (v) {
+        // Force the exact available visual height
+        setViewportHeight(`${v.height}px`);
+        // If the visual viewport is significantly smaller than the window, keyboard is likely open
+        setIsKeyboardOpen(window.innerHeight - v.height > 150);
+      }
     };
-    window.visualViewport.addEventListener("resize", handle);
-    window.visualViewport.addEventListener("scroll", handle);
+
+    window.visualViewport.addEventListener("resize", handleResize);
+    window.visualViewport.addEventListener("scroll", handleResize);
+    
+    handleResize(); // Initialize immediately on mount
+
     return () => {
-      window.visualViewport?.removeEventListener("resize", handle);
-      window.visualViewport?.removeEventListener("scroll", handle);
+      window.visualViewport?.removeEventListener("resize", handleResize);
+      window.visualViewport?.removeEventListener("scroll", handleResize);
     };
   }, []);
-  return offset;
+
+  return { viewportHeight, isKeyboardOpen };
 }
 
 // ─── Main component ──────────────────────────────────────────────
@@ -195,7 +208,9 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
 
   const bottomRef   = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const keyboardOffset = useKeyboardOffset();
+  
+  // New hook integration
+  const { viewportHeight, isKeyboardOpen } = useKeyboardHandling();
 
   // Lightweight status bar query — only counts + today's revenue
   const stats = useQuery(
@@ -274,13 +289,13 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
         }
         @keyframes aiBounce {
           0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-          40%            { transform: translateY(-4px); opacity: 1; }
+          40%           { transform: translateY(-4px); opacity: 1; }
         }
       `}</style>
 
       <div
-        className="flex flex-col bg-white font-sans transition-[max-height] duration-150 ease-out sm:max-w-3xl sm:mx-auto sm:border-x sm:border-gray-100 sm:shadow-sm"
-        style={{ height: "100%", maxHeight: `calc(100% - ${keyboardOffset}px)` }}
+        className="flex flex-col bg-white font-sans transition-[height] duration-150 ease-out sm:max-w-3xl sm:mx-auto sm:border-x sm:border-gray-100 sm:shadow-sm"
+        style={{ height: viewportHeight }}
       >
         {/* ── Status bar ── */}
         <div className="px-4 py-2.5 border-b border-green-50/50 bg-[#FAFFFE] flex items-center gap-2.5 shrink-0 z-10 shadow-sm">
@@ -353,7 +368,7 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
         {/* ── Mobile bottom nav spacer ── */}
         <div
           className="md:hidden shrink-0 transition-[height] duration-150 ease-out bg-[#FAFFFE]"
-          style={{ height: keyboardOffset > 0 ? 0 : 64 }}
+          style={{ height: isKeyboardOpen ? 0 : 64 }}
         />
       </div>
     </>

@@ -11,43 +11,51 @@ const HOTEL_TOOLS = [
       {
         name: "getRoomsSummary",
         description:
-          "Get all hotel rooms with their current status (available / occupied / pending_checkout), category, tariff, floor, and amenities. Use for room availability, occupancy rate, and room-specific questions.",
+          "Get all hotel rooms with their current status (available / occupied / pending_checkout), category, tariff, floor, and amenities. " +
+          "Use for: room availability queries, occupancy rate calculations, room-type breakdowns, floor-wise summaries, tariff comparisons. " +
+          "Always call this first when the user asks anything about rooms, occupancy, or availability.",
       },
       {
         name: "getBookings",
         description:
-          "Get complete room booking history and occupancy logs. Filter by status, dates, room number, or guest name. Use to find past occupants, current guests, or future arrivals.",
+          "Get booking records filtered by status, date range, room number, or guest name. " +
+          "Use for: finding current guests (status=checked_in), upcoming arrivals (status=confirmed), past stays (status=checked_out), " +
+          "room history (roomNumber only, no date filter), who was in a room on a specific day (activeOnDate), or cancellations. " +
+          "IMPORTANT: For revenue from bookings, also call getBills with billType=room. " +
+          "Chain with getGuests if you need guest profile details after finding a booking.",
         parameters: {
           type: "object",
           properties: {
             status: {
               type: "string",
               enum: ["confirmed", "checked_in", "checked_out", "cancelled"],
-              description: "Filter by booking status",
+              description: "Filter by booking status. Omit to get all statuses.",
             },
             dateFrom: {
               type: "string",
-              description: "Start of check-in date range in YYYY-MM-DD format",
+              description: "Start of check-in date range in YYYY-MM-DD format.",
             },
             dateTo: {
               type: "string",
-              description: "End of check-in date range in YYYY-MM-DD format",
+              description: "End of check-in date range in YYYY-MM-DD format.",
             },
             roomNumber: {
               type: "string",
-              description: "Filter by specific room number (e.g. '101')",
+              description: "Filter by specific room number e.g. '101'. Use alone (no dates) for full room history.",
             },
             guestName: {
               type: "string",
-              description: "Partial search for guest name",
+              description: "Partial search for guest name.",
             },
             activeOnDate: {
               type: "string",
-              description: "Find who was occupying the room on this specific date (YYYY-MM-DD)",
+              description:
+                "Return only bookings that were active (checked in) on this specific date (YYYY-MM-DD). " +
+                "Use for 'who was in room X on date Y' or 'occupancy on a specific date'.",
             },
             limit: {
               type: "number",
-              description: "Max records to return (default 50)",
+              description: "Max records to return. Default 50. Use 200+ for monthly reports.",
             },
           },
         },
@@ -55,17 +63,20 @@ const HOTEL_TOOLS = [
       {
         name: "getGuests",
         description:
-          "Search guest profiles by name or phone number. Use for guest lookup, visit history, and total spend analysis.",
+          "Search guest profiles by name or phone number. Returns visit count and total lifetime spend. " +
+          "Use for: guest lookup, VIP identification (high spend/visits), finding a guest's contact details, " +
+          "or verifying a guest exists before looking up their bookings. " +
+          "Chain with getBookings (guestName filter) if you need their stay history.",
         parameters: {
           type: "object",
           properties: {
             search: {
               type: "string",
-              description: "Partial guest name or phone number to search",
+              description: "Partial guest name or phone number. Leave empty to get all guests.",
             },
             limit: {
               type: "number",
-              description: "Max records to return (default 30)",
+              description: "Max records to return. Default 30.",
             },
           },
         },
@@ -73,26 +84,31 @@ const HOTEL_TOOLS = [
       {
         name: "getBills",
         description:
-          "Get finalized bills. Filter by date range and/or bill type (outlet). Use for revenue analysis, payment method breakdown, and financial summaries.",
+          "Get finalized bills by date range and/or outlet type. " +
+          "Use for: daily/weekly/monthly revenue, payment method breakdown (cash vs card vs UPI), " +
+          "outlet-wise revenue split, GST reports, and total collections. " +
+          "IMPORTANT: Always provide both dateFrom and dateTo for any revenue/financial question. " +
+          "To get total hotel revenue, call this FOUR times: billType=room, restaurant, cafe, banquet — or once without billType to get all. " +
+          "Chain with getOrders for itemised food & beverage breakdown.",
         parameters: {
           type: "object",
           properties: {
             dateFrom: {
               type: "string",
-              description: "Start date in YYYY-MM-DD format",
+              description: "Start date in YYYY-MM-DD format (inclusive).",
             },
             dateTo: {
               type: "string",
-              description: "End date in YYYY-MM-DD format (inclusive)",
+              description: "End date in YYYY-MM-DD format (inclusive).",
             },
             billType: {
               type: "string",
               enum: ["room", "restaurant", "cafe", "banquet"],
-              description: "Filter bills by outlet type",
+              description: "Filter bills by outlet. Omit to get all outlets combined.",
             },
             limit: {
               type: "number",
-              description: "Max records to return (default 100)",
+              description: "Max records. Default 100. Use 500+ for monthly reports.",
             },
           },
         },
@@ -100,26 +116,29 @@ const HOTEL_TOOLS = [
       {
         name: "getOrders",
         description:
-          "Get restaurant or cafe orders. Filter by outlet and/or date range. Use for order history, KOT queries, and food & beverage revenue.",
+          "Get restaurant or cafe KOTs/orders filtered by outlet and date range. " +
+          "Use for: order history, table-wise analysis, popular items (chain with getMenuItems), " +
+          "F&B revenue breakdown, and pending/open orders. " +
+          "IMPORTANT: Always specify outlet (restaurant or cafe). For best-sellers, call getMenuItems in parallel.",
         parameters: {
           type: "object",
           properties: {
             outlet: {
               type: "string",
               enum: ["restaurant", "cafe"],
-              description: "Filter by outlet",
+              description: "Which outlet to query. Always specify this.",
             },
             dateFrom: {
               type: "string",
-              description: "Start date in YYYY-MM-DD format",
+              description: "Start date in YYYY-MM-DD format.",
             },
             dateTo: {
               type: "string",
-              description: "End date in YYYY-MM-DD format",
+              description: "End date in YYYY-MM-DD format.",
             },
             limit: {
               type: "number",
-              description: "Max records to return (default 50)",
+              description: "Max records. Default 50.",
             },
           },
         },
@@ -127,22 +146,26 @@ const HOTEL_TOOLS = [
       {
         name: "getMenuItems",
         description:
-          "Get all menu items with their name, category, outlet, price, and availability. Use for menu queries, item lookup, and best-seller analysis when combined with orders.",
+          "Get all menu items with name, category, outlet, price, and availability status. " +
+          "Use for: menu display, price lookup, item availability, and best-seller analysis when combined with getOrders. " +
+          "To find top sellers: call both getMenuItems and getOrders, then aggregate item quantities from orders.",
       },
       {
         name: "getBanquetData",
         description:
-          "Get banquet halls and their bookings. Filter bookings by event date range. Use for upcoming events, hall availability, and banquet revenue.",
+          "Get banquet halls (capacity, pricing) and their event bookings filtered by event date range. " +
+          "Use for: upcoming events, hall availability on a date, banquet revenue, event guest lists. " +
+          "Always provide dateFrom/dateTo unless asking about hall configurations only.",
         parameters: {
           type: "object",
           properties: {
             dateFrom: {
               type: "string",
-              description: "Start event date in YYYY-MM-DD format",
+              description: "Start event date in YYYY-MM-DD format.",
             },
             dateTo: {
               type: "string",
-              description: "End event date in YYYY-MM-DD format",
+              description: "End event date in YYYY-MM-DD format.",
             },
           },
         },
@@ -150,18 +173,20 @@ const HOTEL_TOOLS = [
       {
         name: "getStaff",
         description:
-          "Get all staff members with their name, role, and active status. PINs are already stripped. Use for staff queries and role-based questions.",
+          "Get all staff members with name, role, and active/inactive status. PINs are stripped. " +
+          "Use for: staff directory, role-based queries (e.g. 'who are the receptionists'), headcount, active vs inactive staff.",
       },
       {
         name: "getAuditLog",
         description:
-          "Get recent audit log entries showing staff actions (login, logout, create_order, checkin, checkout, etc.). Use for activity tracking.",
+          "Get recent staff activity log: logins, logouts, check-ins, check-outs, order creation, bill generation, etc. " +
+          "Use for: tracking who performed an action, recent hotel activity, shift summaries.",
         parameters: {
           type: "object",
           properties: {
             limit: {
               type: "number",
-              description: "Number of most recent entries to return (default 50)",
+              description: "Number of most recent entries (default 50, max 200).",
             },
           },
         },
@@ -169,38 +194,41 @@ const HOTEL_TOOLS = [
       {
         name: "getHotelSettings",
         description:
-          "Get hotel configuration: hotel name, address, phone, GST rates, check-in/check-out times, and other system settings.",
+          "Get hotel configuration: name, address, phone, GST rates (CGST/SGST), check-in time, check-out time, and other system settings. " +
+          "Use when the user asks about hotel details, GST rates, or official timings.",
       },
     ],
   },
 ];
-// deploy trigger comment
+
 function buildSystemPrompt(today: string): string {
-  return `Role: Hotel Admin AI. Date: ${today}.
+  const d = new Date(today);
+  const fmt = (dt: Date) => dt.toISOString().split("T")[0];
+  const yesterday    = fmt(new Date(d.getTime() - 86400000));
+  const last7        = fmt(new Date(d.getTime() - 6 * 86400000));
+  const last30       = fmt(new Date(d.getTime() - 29 * 86400000));
+  const monthStart   = `${today.slice(0, 8)}01`;
+  const prevMonthEnd   = fmt(new Date(d.getFullYear(), d.getMonth(), 0));
+  const prevMonthStart = fmt(new Date(d.getFullYear(), d.getMonth() - 1, 1));
+
+  return `Hotel Admin AI. Today: ${today}.
+
+Dates: today=${today} | yesterday=${yesterday} | this_month=${monthStart}..${today} | last_7=${last7}..${today} | last_30=${last30}..${today} | last_month=${prevMonthStart}..${prevMonthEnd}
+
 Rules:
-1. NO hallucinations. ALWAYS query tools using the tightest filters (dates/status/search).
-2. Dates: Use 'dateFrom'/'dateTo' for ranges. Use 'activeOnDate' for specific days.
-3. History: For "all past occupants" or "room history", query 'getBookings' with 'roomNumber' and NO date filters.
-3. Format: Clean Markdown. Match user language (Eng/Hindi/Hinglish). Be honest if data is missing.
-4. Currency: Rs. with Indian commas (e.g., Rs. 1,20,000).
-5. Security: NEVER mention staff PINs.
+1. Never hallucinate. Only report what tools return. On empty results, say so specifically.
+2. Use tightest filters — pass status/dates/roomNumber/guestName whenever known.
+3. Chain tools for complete answers:
+   - Top guests → getGuests + getBookings
+   - Best sellers → getOrders + getMenuItems
+   - Room history → getBookings(roomNumber, no dates) + getRoomsSummary
+   - Revenue → getBills(dateFrom, dateTo); omit billType for all outlets combined
+4. Occupancy = (occupied + pending_checkout) / total × 100. Break down by category.
+5. Currency: Rs. X,XX,XXX. Always show totals + payment method split for revenue queries.
+6. Match user language: English / Hindi / Hinglish.
+7. Never reveal staff PINs.
 
-Tools:
-- getRoomsSummary: Availability/occupancy
-- getBookings: Check-ins/outs, arrivals, occupancy (requires dates/status)
-- getGuests: Lookup by name/phone
-- getBills: Revenue/payments (requires dateFrom, dateTo)
-- getOrders: Rest./cafe orders (requires outlet, dates)
-- getMenuItems: Menus, prices, best sellers
-- getBanquetData: Events/halls (requires dates)
-- getStaff: Staff/roles
-- getAuditLog: Recent activity
-- getHotelSettings: Name, GST, timings
-
-MD Table Schemas (Mandatory for lists):
-- Guests: Name | Phone | Total Visits | Total Spend
-- Rooms: Room No. | Category | Floor | Tariff | Current Status
-- Bookings: Guest Name | Room No. | Check-In | Check-Out | Status`;
+Format: Markdown. Tables for 3+ items. Lead with key figure. On partial tool failure, answer with what succeeded and note what failed.`;
 }
 
 async function executeTool(
@@ -208,90 +236,196 @@ async function executeTool(
   toolName: string,
   toolArgs: Record<string, unknown>
 ): Promise<unknown> {
-  const base = { token, ...toolArgs } as any;
+  const base = { token, ...toolArgs } as Record<string, unknown>;
 
   switch (toolName) {
     case "getRoomsSummary": {
-      const rooms = await convex.query(api.aiChatbot.getRoomsSummary, { token }) as any[];
-      // Strip Convex metadata and irrelevant fields to save massive tokens
-      return rooms.map(r => ({
+      const rooms = (await convex.query(api.aiChatbot.getRoomsSummary, { token })) as Array<{
+        roomNumber: string;
+        status: string;
+        category: string;
+        tariff: number;
+        floor?: number | string;
+        amenities?: string[];
+      }>;
+      return rooms.map((r) => ({
         roomNo: r.roomNumber,
         status: r.status,
-        cat: r.category,
-        tariff: r.tariff
+        category: r.category,
+        tariff: r.tariff,
+        floor: r.floor ?? null,
       }));
     }
+
     case "getGuests": {
-      const guests = await convex.query(api.aiChatbot.getGuests, base) as any[];
-      return guests.map(g => ({
+      const guests = (await convex.query(api.aiChatbot.getGuests, base as { limit?: number; search?: string; token: string })) as Array<{
+        name: string;
+        phone: string;
+        totalVisits: number;
+        totalSpend: number;
+        email?: string;
+      }>;
+      return guests.map((g) => ({
         name: g.name,
         phone: g.phone,
+        email: g.email ?? null,
         visits: g.totalVisits,
-        spend: g.totalSpend
+        spend: g.totalSpend,
       }));
     }
+
     case "getBookings": {
-      const bookings = await convex.query(api.aiChatbot.getBookings, base) as any[];
-      return bookings.map(b => ({
+      const bookings = (await convex.query(api.aiChatbot.getBookings, base as { status?: string; limit?: number; dateFrom?: string; roomNumber?: string; guestName?: string; dateTo?: string; activeOnDate?: string; token: string })) as Array<{
+        guestName: string;
+        roomNumber?: string;
+        checkIn: string;
+        checkOut: string;
+        status: string;
+        totalAmount: number;
+        adults?: number;
+        children?: number;
+        paymentMethod?: string;
+      }>;
+      return bookings.map((b) => ({
         guest: b.guestName,
-        room: b.roomNumber || "N/A",
+        room: b.roomNumber ?? "N/A",
         checkIn: b.checkIn,
         checkOut: b.checkOut,
         status: b.status,
-        total: b.totalAmount
+        total: b.totalAmount,
+        guests: [b.adults ?? 1, b.children ?? 0].join("A+") + "C",
+        payment: b.paymentMethod ?? null,
       }));
     }
+
     case "getBills": {
-      const bills = await convex.query(api.aiChatbot.getBills, base) as any[];
-      return bills.map(b => ({
+      const bills = (await convex.query(api.aiChatbot.getBills, base as { limit?: number; dateFrom?: string; billType?: string; dateTo?: string; token: string })) as Array<{
+        guestName: string;
+        billType: string;
+        totalAmount: number;
+        paymentMethod: string;
+        createdAt: string;
+        gstAmount?: number;
+      }>;
+      return bills.map((b) => ({
         guest: b.guestName,
         type: b.billType,
         total: b.totalAmount,
+        gst: b.gstAmount ?? null,
         method: b.paymentMethod,
-        date: b.createdAt.slice(0, 10)
+        date: b.createdAt.slice(0, 10),
       }));
     }
+
     case "getOrders": {
-      const orders = await convex.query(api.aiChatbot.getOrders, base) as any[];
-      return orders.map(o => ({
-        id: o.kotNumber || "N/A",
+      const orders = (await convex.query(api.aiChatbot.getOrders, base as { limit?: number; dateFrom?: string; outlet?: string; dateTo?: string; token: string })) as Array<{
+        kotNumber?: string;
+        outlet: string;
+        tableNumber?: string;
+        totalAmount: number;
+        status: string;
+        items: Array<{ name: string; quantity: number; price?: number }>;
+        createdAt?: string;
+      }>;
+      return orders.map((o) => ({
+        kot: o.kotNumber ?? "N/A",
         outlet: o.outlet,
-        table: o.tableNumber,
+        table: o.tableNumber ?? null,
         total: o.totalAmount,
         status: o.status,
-        items: o.items.map((i: any) => `${i.name} x${i.quantity}`).join(", ")
+        date: o.createdAt?.slice(0, 10) ?? null,
+        items: o.items.map((i) => ({
+          name: i.name,
+          qty: i.quantity,
+          price: i.price ?? null,
+        })),
       }));
     }
+
     case "getMenuItems": {
-        const items = await convex.query(api.aiChatbot.getMenuItems, { token }) as any[];
-        return items.map(i => ({
-          name: i.name,
-          cat: i.category,
-          price: i.price,
-          outlet: i.outlet,
-          available: i.isAvailable
-        }));
+      const items = (await convex.query(api.aiChatbot.getMenuItems, { token })) as Array<{
+        name: string;
+        category: string;
+        price: number;
+        outlet: string;
+        isAvailable: boolean;
+        description?: string;
+      }>;
+      return items.map((i) => ({
+        name: i.name,
+        category: i.category,
+        price: i.price,
+        outlet: i.outlet,
+        available: i.isAvailable,
+      }));
     }
+
     case "getBanquetData": {
-      const data = await convex.query(api.aiChatbot.getBanquetData, base) as any;
+      const data = (await convex.query(api.aiChatbot.getBanquetData, base as { dateFrom?: string; dateTo?: string; token: string })) as {
+        halls: Array<{ name: string; capacity: number; price: number; amenities?: string[] }>;
+        bookings: Array<{
+          eventName: string;
+          eventDate: string;
+          guestName: string;
+          status: string;
+          amount?: number;
+          attendees?: number;
+        }>;
+      };
       return {
-        halls: data.halls.map((h: any) => ({ name: h.name, capacity: h.capacity, price: h.price })),
-        bookings: data.bookings.map((b: any) => ({ event: b.eventName, date: b.eventDate, guest: b.guestName, status: b.status }))
+        halls: data.halls.map((h) => ({
+          name: h.name,
+          capacity: h.capacity,
+          price: h.price,
+        })),
+        bookings: data.bookings.map((b) => ({
+          event: b.eventName,
+          date: b.eventDate,
+          guest: b.guestName,
+          status: b.status,
+          amount: b.amount ?? null,
+          attendees: b.attendees ?? null,
+        })),
       };
     }
+
     case "getStaff": {
-      const staff = await convex.query(api.aiChatbot.getStaff, { token }) as any[];
-      return staff.map(s => ({ name: s.name, role: s.role, active: s.isActive }));
+      const staff = (await convex.query(api.aiChatbot.getStaff, { token })) as Array<{
+        name: string;
+        role: string;
+        isActive: boolean;
+      }>;
+      return staff.map((s) => ({
+        name: s.name,
+        role: s.role,
+        active: s.isActive,
+      }));
     }
+
     case "getAuditLog": {
-      const logs = await convex.query(api.aiChatbot.getAuditLog, base) as any[];
-      return logs.map(l => ({ action: l.action, details: l.details, time: new Date(l.timestamp).toLocaleString() }));
+      const logs = (await convex.query(api.aiChatbot.getAuditLog, base as { limit?: number; token: string })) as Array<{
+        action: string;
+        details?: string;
+        staffName?: string;
+        timestamp: number;
+      }>;
+      return logs.map((l) => ({
+        action: l.action,
+        staff: l.staffName ?? null,
+        details: l.details ?? null,
+        time: new Date(l.timestamp).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+      }));
     }
+
     case "getHotelSettings": {
-      const settings = await convex.query(api.aiChatbot.getHotelSettings, { token }) as any[];
-      return settings[0] || {}; // Return first config
+      const settings = (await convex.query(api.aiChatbot.getHotelSettings, { token })) as Array<
+        Record<string, unknown>
+      >;
+      return settings[0] ?? {};
     }
-    default: throw new Error(`Unknown tool: ${toolName}`);
+
+    default:
+      throw new Error(`Unknown tool: ${toolName}`);
   }
 }
 
@@ -306,7 +440,7 @@ export async function POST(req: NextRequest) {
   try {
     const { token, history, userMessage } = (await req.json()) as {
       token: string;
-      history: { role: string; parts: GeminiPart[] }[];
+      history: GeminiContent[];
       userMessage: string;
     };
 
@@ -315,7 +449,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "GEMINI_KEY not set on server" }, { status: 500 });
     }
 
-    const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
     const systemPrompt = buildSystemPrompt(today);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
@@ -326,7 +461,7 @@ export async function POST(req: NextRequest) {
 
     const toolsUsed: string[] = [];
 
-    for (let round = 0; round < 6; round++) {
+    for (let round = 0; round < 8; round++) {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -334,30 +469,42 @@ export async function POST(req: NextRequest) {
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents,
           tools: HOTEL_TOOLS,
-          generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 2500,
+          },
         }),
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+        const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
         return NextResponse.json(
           { error: err?.error?.message ?? `Gemini error ${res.status}` },
           { status: 500 }
         );
       }
 
-      const data = await res.json() as {
+      const data = (await res.json()) as {
         candidates?: Array<{
-          content?: { role?: string; parts?: Array<{ text?: string; functionCall?: { name: string; args: Record<string, unknown> } }> };
+          content?: {
+            role?: string;
+            parts?: Array<{
+              text?: string;
+              functionCall?: { name: string; args: Record<string, unknown> };
+            }>;
+          };
           finishReason?: string;
         }>;
       };
 
-      const parts = data.candidates?.[0]?.content?.parts ?? [];
+      const candidate = data.candidates?.[0];
+      const parts = candidate?.content?.parts ?? [];
       const toolCalls = parts.filter((p) => p.functionCall);
 
       if (toolCalls.length === 0) {
-        const text = parts.find((p) => p.text)?.text ?? "I couldn't generate a response.";
+        const text =
+          parts.find((p) => p.text)?.text?.trim() ??
+          "I was unable to generate a response. Please try rephrasing your question.";
         return NextResponse.json({ text, toolsUsed });
       }
 
@@ -371,27 +518,36 @@ export async function POST(req: NextRequest) {
       const names = toolCalls.map((p) => p.functionCall!.name);
       toolsUsed.push(...names);
 
-      const toolResults = await Promise.all(
+      const toolResults = await Promise.allSettled(
         toolCalls.map(async (p) => {
           const { name, args } = p.functionCall!;
-          try {
-            const result = await executeTool(token, name, args);
-            return { name, result };
-          } catch (err) {
-            return { name, result: { error: String(err) } };
-          }
+          const result = await executeTool(token, name, args);
+          return { name, result };
         })
       );
 
       contents.push({
         role: "user",
-        parts: toolResults.map(({ name, result }) => ({
-          functionResponse: { name, response: { content: result } },
-        })),
+        parts: toolResults.map((settled, i) => {
+          const name = toolCalls[i].functionCall!.name;
+          const result =
+            settled.status === "fulfilled"
+              ? settled.value.result
+              : { error: `Tool failed: ${(settled.reason as Error)?.message ?? "unknown error"}` };
+          return {
+            functionResponse: {
+              name,
+              response: { content: result },
+            },
+          };
+        }),
       });
     }
 
-    return NextResponse.json({ error: "Too many tool rounds without a final answer." }, { status: 500 });
+    return NextResponse.json(
+      { error: "The query required too many data lookups. Please try a more specific question." },
+      { status: 500 }
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Internal server error";
     return NextResponse.json({ error: msg }, { status: 500 });
