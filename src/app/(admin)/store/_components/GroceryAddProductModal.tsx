@@ -1,9 +1,5 @@
 "use client";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GroceryAddProductModal.tsx
-// ─────────────────────────────────────────────────────────────────────────────
-
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Package, ScanLine, Loader2 } from "lucide-react";
@@ -14,6 +10,29 @@ import { readBarcodesFromImageFile } from "zxing-wasm/reader";
 
 const UNITS = ["kg", "g", "litre", "ml", "piece", "packet", "dozen", "bundle", "box", "can", "bottle"];
 const GST_RATES = [0, 5, 12, 18, 28];
+
+// ── GST inference from Open Food Facts category tags ──────────────
+function inferGstRate(categoryTags: string[] = []): number {
+  const tags = categoryTags.join(" ").toLowerCase();
+  if (tags.includes("beverage") || tags.includes("drink") || tags.includes("aerated")) return 12;
+  if (tags.includes("snack") || tags.includes("chocolate") || tags.includes("confection")) return 18;
+  if (tags.includes("dairy") || tags.includes("milk") || tags.includes("curd")) return 5;
+  if (tags.includes("grain") || tags.includes("cereal") || tags.includes("rice") || tags.includes("wheat") || tags.includes("flour")) return 0;
+  if (tags.includes("oil") || tags.includes("fat")) return 5;
+  if (tags.includes("spice") || tags.includes("condiment") || tags.includes("sauce")) return 12;
+  return 0; // default: unpackaged food staples
+}
+
+// ── Unit parser from quantity string ─────────────────────────────
+function parseUnit(qtyString: string): string | null {
+  const lower = qtyString.toLowerCase();
+  for (const u of UNITS) {
+    if (lower.includes(u)) return u;
+  }
+  if (lower.includes("l") && /\d/.test(lower)) return "litre";
+  if (lower.includes("gm")) return "g";
+  return null;
+}
 
 interface GroceryAddProductModalProps {
   categories: string[];
@@ -36,21 +55,31 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
     stockQuantity: "",
     lowStockThreshold: "5",
     description: "",
+    // new fields from API
+    brandName: "",
+    manufacturer: "",
+    ingredients: "",
+    isVegetarian: false,
+    isVegan: false,
+    isOrganic: false,
+    countryOfOrigin: "",
+    packagingType: "",
+    image: "",
   });
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isFetchingInfo, setIsFetchingInfo] = useState(false);
+  const [showExtra, setShowExtra] = useState(false);
 
-  const set = (key: keyof typeof form, val: string) =>
+  const set = (key: keyof typeof form, val: string | boolean) =>
     setForm((f) => ({ ...f, [key]: val }));
 
-  // ── Auto-Fill Logic using Open Food Facts API ──────────────────────────────
+  // ── Auto-Fill from Open Food Facts ───────────────────────────────
   const handleBarcodeDetected = async (code: string) => {
     setIsScanning(false);
     set("barcode", code);
     setIsFetchingInfo(true);
-    
     toast.loading("Fetching product details...", { id: "fetch-product" });
 
     try {
@@ -58,28 +87,45 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
       const data = await res.json();
 
       if (data.status === 1 && data.product) {
+        const p = data.product;
         toast.success("Product found!", { id: "fetch-product" });
-        
-        // Try to parse the unit from the quantity string (e.g., "500 g" -> "g")
-        let detectedUnit = form.unit;
-        const qtyString = (data.product.quantity || "").toLowerCase();
-        for (const u of UNITS) {
-          if (qtyString.includes(u)) {
-            detectedUnit = u;
-            break;
-          }
-        }
 
-        setForm(prev => ({
+        const detectedUnit = parseUnit(p.quantity || "") ?? form.unit;
+        const inferredGst = inferGstRate(p.categories_tags || []);
+        const labels: string[] = p.labels_tags || [];
+        const isVeg = labels.some((l: string) => l.includes("vegetarian"));
+        const isVegan = labels.some((l: string) => l.includes("vegan"));
+        const isOrganic = labels.some((l: string) => l.includes("organic"));
+
+        // Try to match category from API to local categories
+        const apiCategory = (p.categories || "").split(",")[0]?.trim() ?? "";
+        const matchedCategory = categories.find(
+          (c) => c.toLowerCase() === apiCategory.toLowerCase()
+        ) ?? form.category;
+
+        setForm((prev) => ({
           ...prev,
-          name: data.product.product_name || prev.name,
+          name: p.product_name || p.product_name_en || prev.name,
+          brandName: p.brands?.split(",")[0]?.trim() || prev.brandName,
+          manufacturer: p.manufacturing_places || p.producer || prev.manufacturer,
+          ingredients: p.ingredients_text || prev.ingredients,
+          countryOfOrigin: p.countries?.split(",")[0]?.trim() || prev.countryOfOrigin,
+          packagingType: p.packaging?.split(",")[0]?.trim() || prev.packagingType,
+          image: p.image_front_url || prev.image,
           unit: detectedUnit,
-          // You can also map API categories to your local categories if they match
+          gstRate: String(inferredGst),
+          category: matchedCategory,
+          description: p.generic_name || prev.description,
+          isVegetarian: isVeg,
+          isVegan: isVegan,
+          isOrganic: isOrganic,
         }));
+
+        setShowExtra(true); // expand extra fields so user can verify
       } else {
         toast.info("Barcode scanned. Product not in global database, please fill manually.", { id: "fetch-product" });
       }
-    } catch (e) {
+    } catch {
       toast.error("Failed to fetch product info.", { id: "fetch-product" });
     } finally {
       setIsFetchingInfo(false);
@@ -105,7 +151,17 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
         stockQuantity: parseFloat(form.stockQuantity),
         lowStockThreshold: parseFloat(form.lowStockThreshold) || 5,
         description: form.description.trim() || undefined,
+        image: form.image.trim() || undefined,
         isActive: true,
+        // new fields
+        brandName: form.brandName.trim() || undefined,
+        manufacturer: form.manufacturer.trim() || undefined,
+        ingredients: form.ingredients.trim() || undefined,
+        countryOfOrigin: form.countryOfOrigin.trim() || undefined,
+        packagingType: form.packagingType.trim() || undefined,
+        isVegetarian: form.isVegetarian || undefined,
+        isVegan: form.isVegan || undefined,
+        isOrganic: form.isOrganic || undefined,
       });
       toast.success(`${form.name} added to inventory`);
       onClose();
@@ -119,13 +175,10 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-
       <motion.div
         initial={{ y: "100%", opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -146,11 +199,22 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-hide relative">
-          {/* Overlay loader when fetching API data */}
           {isFetchingInfo && (
             <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center">
               <Loader2 className="animate-spin text-[#2D6A4F] mb-2" size={32} />
               <p className="text-sm font-bold text-gray-700">Loading Product Data...</p>
+            </div>
+          )}
+
+          {/* Image preview if autofilled */}
+          {form.image && (
+            <div className="flex items-center gap-3 p-3 bg-[#F7F6F3] rounded-2xl border border-[#E8E5DF]">
+              <img src={form.image} alt="product" className="w-14 h-14 rounded-xl object-cover border border-gray-200" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-0.5">Auto-filled from barcode</p>
+                <p className="text-sm font-bold text-gray-700 truncate">{form.name}</p>
+                {form.brandName && <p className="text-xs text-gray-400">{form.brandName}</p>}
+              </div>
             </div>
           )}
 
@@ -182,14 +246,13 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
             )}
           </div>
 
-          {/* ── Updated Barcode Field with Scan Button ── */}
           <Field label="Barcode / SKU">
             <div className="flex gap-2">
-              <input 
-                value={form.barcode} 
-                onChange={(e) => set("barcode", e.target.value)} 
-                placeholder="Scan or type barcode" 
-                className={`${INPUT} mono flex-1`} 
+              <input
+                value={form.barcode}
+                onChange={(e) => set("barcode", e.target.value)}
+                placeholder="Scan or type barcode"
+                className={`${INPUT} font-mono flex-1`}
               />
               <button
                 onClick={() => setIsScanning(true)}
@@ -254,6 +317,81 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
             />
           </Field>
 
+          {/* ── Extra Fields (auto-expanded after barcode scan) ── */}
+          <button
+            type="button"
+            onClick={() => setShowExtra((v) => !v)}
+            className="w-full text-xs font-black text-[#2D6A4F] uppercase tracking-widest py-2 flex items-center justify-center gap-1 hover:opacity-70 transition-opacity"
+          >
+            {showExtra ? "▲ Hide" : "▼ Show"} Additional Details
+          </button>
+
+          <AnimatePresence>
+            {showExtra && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-4 overflow-hidden"
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Brand Name">
+                    <input value={form.brandName} onChange={(e) => set("brandName", e.target.value)} placeholder="e.g. Amul" className={INPUT} />
+                  </Field>
+                  <Field label="Manufacturer">
+                    <input value={form.manufacturer} onChange={(e) => set("manufacturer", e.target.value)} placeholder="e.g. Gujarat Co-op" className={INPUT} />
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Country of Origin">
+                    <input value={form.countryOfOrigin} onChange={(e) => set("countryOfOrigin", e.target.value)} placeholder="e.g. India" className={INPUT} />
+                  </Field>
+                  <Field label="Packaging Type">
+                    <input value={form.packagingType} onChange={(e) => set("packagingType", e.target.value)} placeholder="e.g. Packet" className={INPUT} />
+                  </Field>
+                </div>
+
+                <Field label="Ingredients">
+                  <textarea
+                    value={form.ingredients}
+                    onChange={(e) => set("ingredients", e.target.value)}
+                    placeholder="e.g. Wheat flour, salt, water…"
+                    rows={2}
+                    className={`${INPUT} resize-none h-auto py-2`}
+                  />
+                </Field>
+
+                <Field label="Product Image URL">
+                  <input value={form.image} onChange={(e) => set("image", e.target.value)} placeholder="https://…" className={INPUT} />
+                </Field>
+
+                {/* Label Badges */}
+                <Field label="Product Labels">
+                  <div className="flex gap-2 flex-wrap">
+                    {(["isVegetarian", "isVegan", "isOrganic"] as const).map((key) => {
+                      const labels: Record<string, string> = { isVegetarian: "🟢 Vegetarian", isVegan: "🌿 Vegan", isOrganic: "🌾 Organic" };
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => set(key, !form[key])}
+                          className={`px-3 py-1.5 rounded-xl border text-xs font-black transition-all ${
+                            form[key]
+                              ? "bg-[#2D6A4F] border-[#2D6A4F] text-white"
+                              : "bg-[#F7F6F3] border-[#E8E5DF] text-gray-500"
+                          }`}
+                        >
+                          {labels[key]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="h-20" />
         </div>
 
@@ -268,12 +406,11 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
         </div>
       </motion.div>
 
-      {/* ── Scanner UI Modal ── */}
       <AnimatePresence>
         {isScanning && (
-          <BarcodeScannerUI 
-            onClose={() => setIsScanning(false)} 
-            onDetected={handleBarcodeDetected} 
+          <BarcodeScannerUI
+            onClose={() => setIsScanning(false)}
+            onDetected={handleBarcodeDetected}
           />
         )}
       </AnimatePresence>
@@ -281,7 +418,7 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
   );
 }
 
-// ── Tiny Helpers ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────
 
 const INPUT = "w-full h-9 px-3 bg-[#F7F6F3] border border-[#E8E5DF] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#2D6A4F]/20 focus:border-[#2D6A4F]/50 transition-all text-gray-900";
 
@@ -296,59 +433,74 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-// ── ZXING-WASM Scanner Component ─────────────────────────────────────────────
+// ── Fast ZXING Scanner ────────────────────────────────────────────
 
-// ── ZXING-WASM Scanner Component ─────────────────────────────────────────────
-
-function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDetected: (code: string) => void }) {
+function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void; onDetected: (code: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
-    let scanInterval: NodeJS.Timeout;
+    let animFrameId: number;
+    let isProcessing = false;
+    let detected = false;
 
     const startCamera = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
         });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
+        if (videoRef.current) videoRef.current.srcObject = stream;
 
-        // Processing loop
-        scanInterval = setInterval(async () => {
-          if (videoRef.current && videoRef.current.readyState === 4) {
-            const canvas = document.createElement("canvas");
-            canvas.width = videoRef.current.videoWidth;
-            canvas.height = videoRef.current.videoHeight;
-            const ctx = canvas.getContext("2d");
+        const scan = async () => {
+          if (detected) return;
+          const video = videoRef.current;
+          const canvas = canvasRef.current;
 
+          if (video && canvas && video.readyState === 4 && !isProcessing) {
+            isProcessing = true;
+            const scale = Math.min(1, 640 / video.videoWidth);
+            canvas.width = video.videoWidth * scale;
+            canvas.height = video.videoHeight * scale;
+
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
             if (ctx) {
-              ctx.drawImage(videoRef.current, 0, 0);
-              canvas.toBlob(async (blob) => {
-                if (blob) {
-                  const file = new File([blob], "frame.jpg", { type: "image/jpeg" });
-                  try {
-                    const results = await readBarcodesFromImageFile(file, {
-                      // FIX 1: Removed underscores from barcode formats to satisfy TypeScript
-                      formats: ["EAN13", "Code128", "EAN8", "UPCA"],
-                      tryHarder: false,
-                    });
-                    if (results && results.length > 0) {
-                      clearInterval(scanInterval); 
-                      onDetected(results[0].text);
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              canvas.toBlob(
+                async (blob) => {
+                  if (blob && !detected) {
+                    try {
+                      const file = new File([blob], "f.jpg", { type: "image/jpeg" });
+                      const results = await readBarcodesFromImageFile(file, {
+                        formats: ["EAN13", "Code128", "EAN8", "UPCA"],
+                        tryHarder: false,
+                        tryInverted: false,
+                      });
+                      if (results?.length > 0 && !detected) {
+                        detected = true;
+                        onDetected(results[0].text);
+                        return;
+                      }
+                    } catch {
+                      // no barcode in frame, continue
                     }
-                  } catch (err) {
-                    // zxing throws if no barcode is found in the frame, ignore
                   }
-                }
-              }, "image/jpeg", 0.7);
+                  isProcessing = false;
+                },
+                "image/jpeg",
+                0.5
+              );
+            } else {
+              isProcessing = false;
             }
           }
-        }, 300); 
+          animFrameId = requestAnimationFrame(scan);
+        };
 
-      } catch (err) {
+        videoRef.current?.addEventListener("playing", () => {
+          animFrameId = requestAnimationFrame(scan);
+        });
+      } catch {
         toast.error("Camera access denied or unavailable.");
         onClose();
       }
@@ -357,21 +509,18 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
     startCamera();
 
     return () => {
-      clearInterval(scanInterval);
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
+      detected = true;
+      cancelAnimationFrame(animFrameId);
+      stream?.getTracks().forEach((t) => t.stop());
     };
   }, [onClose, onDetected]);
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      // FIX 2: Changed z-[60] to z-60
       className="fixed inset-0 z-60 bg-black flex flex-col"
     >
-      {/* FIX 3: Changed bg-gradient-to-b to bg-linear-to-b */}
-      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-linear-to-b from-black/80 to-transparent">
+      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
         <h3 className="text-white font-bold tracking-wide">Scan Product Barcode</h3>
         <button onClick={onClose} className="p-2 bg-white/20 rounded-full text-white backdrop-blur-sm">
           <X size={20} />
@@ -379,23 +528,17 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
       </div>
 
       <div className="flex-1 relative flex items-center justify-center overflow-hidden">
-        <video 
-          ref={videoRef} 
-          autoPlay 
-          playsInline 
-          muted 
-          className="absolute inset-0 w-full h-full object-cover" 
-        />
-        
+        <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+        <canvas ref={canvasRef} className="hidden" />
         <div className="relative w-64 h-40 border-2 border-[#2D6A4F] rounded-xl overflow-hidden shadow-[0_0_0_4000px_rgba(0,0,0,0.6)]">
-           <motion.div 
-             animate={{ top: ["0%", "100%", "0%"] }}
-             transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-             className="absolute left-0 right-0 h-0.5 bg-[#2D6A4F] shadow-[0_0_10px_#2D6A4F]"
-           />
+          <motion.div
+            animate={{ top: ["0%", "100%", "0%"] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+            className="absolute left-0 right-0 h-0.5 bg-[#2D6A4F] shadow-[0_0_10px_#2D6A4F]"
+          />
         </div>
       </div>
-      
+
       <div className="p-6 pb-10 bg-black text-center text-gray-400 text-sm">
         Align the barcode within the frame to automatically scan and fetch product details.
       </div>
