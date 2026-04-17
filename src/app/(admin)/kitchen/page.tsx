@@ -23,14 +23,13 @@ export default function KitchenPage() {
     }
   }, [settings?.defaultKitchenTab]);
   
-  // Real-time query for orders
-  const orders = useQuery(api.orders.getAllOrders) || [];
+  // Real-time query for status-specific orders (fully server-side optimized)
+  const activeKitchenOrders = useQuery(api.orders.getActiveKitchenOrders) || [];
   const updateStatus = useMutation(api.orders.updateOrderStatus);
 
   // Filter for active kitchen orders (exclude billed/paid)
-  const activeOrders = orders.filter(o => 
-    o.outlet === activeTab && 
-    (o.status === "kot_generated" || o.status === "preparing")
+  const activeOrders = activeKitchenOrders.filter(o => 
+    o.outlet === activeTab
   ).sort((a, b) => new Date(a._creationTime).getTime() - new Date(b._creationTime).getTime());
 
   // Audio Notification Logic
@@ -93,14 +92,14 @@ export default function KitchenPage() {
               onClick={() => setActiveTab("restaurant")}
               icon={<UtensilsCrossed size={16} />}
               label="Restaurant"
-              count={orders.filter(o => o.outlet === "restaurant" && (o.status === "kot_generated" || o.status === "preparing")).length}
+              count={activeKitchenOrders.filter(o => o.outlet === "restaurant" && (o.status === "kot_generated" || o.status === "preparing")).length}
             />
             <TabButton 
               active={activeTab === "cafe"} 
               onClick={() => setActiveTab("cafe")}
               icon={<Coffee size={16} />}
               label="Café"
-              count={orders.filter(o => o.outlet === "cafe" && (o.status === "kot_generated" || o.status === "preparing")).length}
+              count={activeKitchenOrders.filter(o => o.outlet === "cafe" && (o.status === "kot_generated" || o.status === "preparing")).length}
             />
           </div>
         </div>

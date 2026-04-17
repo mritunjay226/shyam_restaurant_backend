@@ -3,8 +3,50 @@ import { v } from "convex/values";
 
 // GET ALL ROOMS
 export const getAllRooms = query({
+  args: { includeInactive: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
+    let query = ctx.db.query("rooms");
+    const rooms = await query.collect();
+    
+    if (args.includeInactive) return rooms;
+    return rooms.filter(r => (r.isActive !== false) || r.status === "occupied" || r.status === "pending_checkout");
+  },
+});
+
+// GET OCCUPIED ROOMS WITH GUEST DETAILS
+export const getOccupiedRoomsWithGuest = query({
+  args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("rooms").collect();
+    const occupiedRooms = await ctx.db
+      .query("rooms")
+      .filter((q) => 
+        q.or(
+          q.eq(q.field("status"), "occupied"),
+          q.eq(q.field("status"), "pending_checkout")
+        )
+      )
+      .collect();
+
+    return await Promise.all(
+      occupiedRooms.map(async (room) => {
+        const booking = await ctx.db
+          .query("bookings")
+          .withIndex("by_room", (q) => q.eq("roomId", room._id))
+          .filter((q) => 
+            q.or(
+              q.eq(q.field("status"), "confirmed"),
+              q.eq(q.field("status"), "checked_in")
+            )
+          )
+          .first();
+
+        return {
+          ...room,
+          guestName: booking?.guestName || "Walk-in Guest",
+          bookingId: booking?._id,
+        };
+      })
+    );
   },
 });
 
@@ -18,12 +60,15 @@ export const getRoomById = query({
 
 // GET ROOMS BY STATUS
 export const getRoomsByStatus = query({
-  args: { status: v.string() },
+  args: { status: v.string(), includeInactive: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    return await ctx.db
+    let rooms = await ctx.db
       .query("rooms")
       .filter((q) => q.eq(q.field("status"), args.status))
       .collect();
+    
+    if (args.includeInactive) return rooms;
+    return rooms.filter(r => r.isActive !== false);
   },
 });
 

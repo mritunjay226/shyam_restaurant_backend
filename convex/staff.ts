@@ -25,12 +25,28 @@ async function verifyAdminAuth(ctx: any, token: string) {
 }
 
 export const getAllStaff = query({
-  args: { token: v.string() },
+  args: { token: v.string(), includeInactive: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     await verifyAdminAuth(ctx, args.token);
-    const staff = await ctx.db.query("staff").collect();
+    let staff = await ctx.db.query("staff").collect();
+    
+    if (!args.includeInactive) {
+      staff = staff.filter(s => s.isActive !== false);
+    }
+    
     // Strip the hashed pin from the response
     return staff.map(({ pin, ...rest }) => rest);
+  },
+});
+
+export const getStaffById = query({
+  args: { token: v.string(), staffId: v.id("staff") },
+  handler: async (ctx, args) => {
+    await verifyAdminAuth(ctx, args.token);
+    const staff = await ctx.db.get(args.staffId);
+    if (!staff) return null;
+    const { pin, ...rest } = staff;
+    return rest;
   },
 });
 

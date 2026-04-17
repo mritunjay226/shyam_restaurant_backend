@@ -43,7 +43,7 @@ export function TitleBar() {
     >
       {/* Left — app label */}
       <span className="px-4 text-xs font-semibold text-gray-400 tracking-wide select-none">
-        Shyam Hotel
+        Sarovar Palace
       </span>
 
       {/* Right — window controls */}

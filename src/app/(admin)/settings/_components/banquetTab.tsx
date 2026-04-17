@@ -25,9 +25,10 @@ type EditHall = {
 };
 
 export function BanquetsTab() {
-    const allHalls = useQuery(api.banquet.getAllHalls) || [];
+    const allHalls = useQuery(api.banquet.getAllHalls, { includeInactive: true }) || [];
     const addHall = useMutation(api.banquet.addHall);
     const updateHall = useMutation(api.banquet.updateHall);
+    const toggleActive = useMutation(api.banquet.toggleHallActive);
 
     const [newHall, setNewHall] = useState({ name: "", type: "Indoor", capacity: "", price: "", image: "" });
     const [editHall, setEditHall] = useState<EditHall | null>(null);
@@ -154,27 +155,55 @@ export function BanquetsTab() {
                                     </div>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-gray-900">{hall.name}</p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-sm font-bold text-gray-900">{hall.name}</p>
+                                        {!hall.isActive && (
+                                            <span className="text-[9px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded uppercase tracking-tighter">
+                                                Inactive
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className="text-xs text-gray-500">
                                         {hall.type} · {hall.capacity} pax · ₹{hall.price || 0}
                                     </p>
                                 </div>
-                                <button
-                                    onClick={() =>
-                                        setEditHall({
-                                            _id: hall._id,
-                                            name: hall.name,
-                                            type: hall.type,
-                                            capacity: hall.capacity.toString(),
-                                            price: (hall.price || 0).toString(),
-                                            description: hall.description || "",
-                                            image: hall.image || "",
-                                        })
-                                    }
-                                    className="p-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors shrink-0"
-                                >
-                                    <Pencil size={14} />
-                                </button>
+                                <div className="flex gap-1.5 shrink-0">
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                await toggleActive({ hallId: hall._id });
+                                                toast.success(`Hall ${hall.name} ${hall.isActive ? "deactivated" : "reactivated"}`);
+                                            } catch (e: any) {
+                                                toast.error(e.message);
+                                            }
+                                        }}
+                                        className={cn(
+                                            "p-2 rounded-lg transition-colors",
+                                            hall.isActive 
+                                                ? "bg-rose-50 text-rose-600 hover:bg-rose-100" 
+                                                : "bg-green-50 text-green-700 hover:bg-green-100"
+                                        )}
+                                        title={hall.isActive ? "Deactivate Hall" : "Reactivate Hall"}
+                                    >
+                                        <X size={14} className={cn(!hall.isActive && "rotate-45")} />
+                                    </button>
+                                    <button
+                                        onClick={() =>
+                                            setEditHall({
+                                                _id: hall._id,
+                                                name: hall.name,
+                                                type: hall.type,
+                                                capacity: hall.capacity.toString(),
+                                                price: (hall.price || 0).toString(),
+                                                description: hall.description || "",
+                                                image: hall.image || "",
+                                            })
+                                        }
+                                        className="p-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                                    >
+                                        <Pencil size={14} />
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>

@@ -21,7 +21,7 @@ export default function RoomsPage() {
   const [view, setView] = useState<"grid" | "calendar">("grid");
   const [search, setSearch] = useState("");
 
-  const rawRooms = useQuery(api.rooms.getAllRooms);
+  const rawRooms = useQuery(api.rooms.getAllRooms, {});
   const rawBookings = useQuery(api.bookings.getAllBookings);
 
   const rooms: RoomViewData[] = (rawRooms || []).map(room => {
@@ -44,6 +44,7 @@ export default function RoomsPage() {
       nights: activeBooking ? nights : undefined,
       advance: activeBooking?.advance,
       bookingId: activeBooking?._id,
+      extraBed: activeBooking?.extraBed,
     };
   }).sort((a, b) => parseInt(a.roomNumber) - parseInt(b.roomNumber));
 

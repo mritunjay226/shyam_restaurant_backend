@@ -20,7 +20,7 @@ export default function BanquetPage() {
   const [view, setView] = useState<"list" | "bookings" | "new">("list");
   const [selectedBooking, setSelectedBooking] = useState<Doc<"banquetBookings"> | null>(null);
   
-  const halls = useQuery(api.banquet.getAllHalls) || [];
+  const halls = useQuery(api.banquet.getAllHalls, {}) || [];
   const bookings = useQuery(api.banquet.getAllBanquetBookings) || [];
   const createBooking = useMutation(api.banquet.createBanquetBooking);
   const cancelBooking = useMutation(api.banquet.cancelBanquetBooking);

@@ -260,5 +260,45 @@ export const getAuditLog = query({
   },
 });
 
+export const changeMyPin = mutation({
+  args: { token: v.string(), oldPin: v.string(), newPin: v.string() },
+  handler: async (ctx, args) => {
+    // 1. Validate session
+    const session = await ctx.db
+      .query("authSessions")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .first();
+    if (!session || Date.now() > session.expiresAt) throw new Error("Unauthorized or session expired.");
+
+    const staff = await ctx.db.get(session.staffId);
+    if (!staff || !staff.isActive) throw new Error("Staff account not found or inactive.");
+
+    // 2. Validate old PIN
+    const hashedOld = await hashPin(args.oldPin);
+    if (staff.pin !== hashedOld) throw new Error("Incorrect current PIN.");
+
+    // 3. Update to new PIN
+    const hashedNew = await hashPin(args.newPin);
+    
+    // Ensure uniqueness across staff (optional but recommended for PINs)
+    const existing = await ctx.db
+      .query("staff")
+      .withIndex("by_pin", (q: any) => q.eq("pin", hashedNew))
+      .first();
+    if (existing && existing._id !== staff._id) {
+      throw new Error("This PIN is already being used by another staff member.");
+    }
+
+    await ctx.db.patch(staff._id, { 
+      pin: hashedNew,
+      failedAttempts: 0,
+      lockedUntil: undefined 
+    });
+
+    await audit(ctx, staff._id, "pin_changed", "Self-service change");
+    return { success: true };
+  },
+});
+
 // Export hashPin so other mutations can use it
 export { hashPin };

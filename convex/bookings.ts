@@ -100,6 +100,7 @@ export const createBooking = mutation({
     advance: v.number(),
     totalAmount: v.number(),
     gstBill: v.optional(v.boolean()),
+    extraBed: v.optional(v.boolean()),
     notes: v.optional(v.string()),
     source: v.optional(v.string()),   // "walk_in", "phone", "ota"
   },
@@ -180,6 +181,7 @@ export const createBooking = mutation({
       totalAmount: args.totalAmount,
       status: "confirmed",
       gstBill: args.gstBill,
+      extraBed: args.extraBed,
       notes: args.notes,
       source: args.source ?? "walk_in",
     });

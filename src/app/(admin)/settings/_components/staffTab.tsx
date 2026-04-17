@@ -3,7 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { UserPlus, Lock, ShieldCheck, Plus } from "lucide-react";
+import { UserPlus, Lock, ShieldCheck, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/../convex/_generated/api";
@@ -27,9 +27,12 @@ interface StaffTabProps {
 export function StaffTab({
   token, isAdmin, staffTypes, newRoleInput, onNewRoleInputChange, onAddRole, onRemoveRole,
 }: StaffTabProps) {
-  const allStaff = useQuery(api.staff.getAllStaff, token ? { token } : "skip") || [];
+  const allStaff = useQuery(api.staff.getAllStaff, token ? { token, includeInactive: true } : "skip") || [];
   const createStaff = useMutation(api.staff.createStaff);
   const updateStaff = useMutation(api.staff.updateStaff);
+  
+  const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [resetPinState, setResetPinState] = useState<{ id: string; pin: string } | null>(null);
 
   const [newStaff, setNewStaff] = useState({ name: "", pin: "", role: "kitchen" });
 
@@ -184,24 +187,86 @@ export function StaffTab({
                   {s.isActive ? "Active" : "Inactive"}
                 </span>
                 {isAdmin && token && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={async () => {
-                      try {
-                        await updateStaff({ token, staffId: s._id, isActive: !s.isActive });
-                        toast.success(`${s.name} ${s.isActive ? "deactivated" : "reactivated"}`);
-                      } catch (e: any) {
-                        toast.error(e.message);
-                      }
-                    }}
-                    className={cn(
-                      "text-xs h-7 px-3 rounded-lg font-semibold",
-                      s.isActive ? "text-rose-600 hover:bg-rose-50" : "text-green-600 hover:bg-green-50"
+                  <div className="flex items-center gap-1.5">
+                    {resetPinState?.id === s._id ? (
+                      <div className="flex items-center gap-1.5 animate-in slide-in-from-right-2">
+                        <Input
+                          type="password"
+                          placeholder="New PIN"
+                          maxLength={4}
+                          value={resetPinState?.pin}
+                          onChange={(e) => setResetPinState({ id: s._id, pin: e.target.value.replace(/\D/g, "").slice(0, 4) })}
+                          className="h-7 w-20 text-[10px] px-2 rounded-lg bg-white border-indigo-200"
+                        />
+                        <Button
+                          size="sm"
+                          disabled={resetPinState?.pin.length !== 4 || isUpdating === s._id}
+                          onClick={async () => {
+                            setIsUpdating(s._id);
+                            try {
+                              await updateStaff({ token, staffId: s._id, pin: resetPinState?.pin });
+                              toast.success(`PIN updated for ${s.name}`);
+                              setResetPinState(null);
+                            } catch (e: any) {
+                              toast.error(e.message);
+                            } finally {
+                              setIsUpdating(null);
+                            }
+                          }}
+                          className="h-7 px-2 bg-indigo-600 text-white hover:bg-indigo-700 text-[10px] font-bold rounded-lg"
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setResetPinState(null)}
+                          className="h-7 w-7 p-0 text-gray-400 hover:text-gray-600"
+                        >
+                          <X size={14} />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setResetPinState({ id: s._id, pin: "" })}
+                          className="text-[10px] h-7 px-2 rounded-lg font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1"
+                        >
+                          <Lock size={12} /> Reset PIN
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={isUpdating === s._id}
+                          onClick={async () => {
+                            setIsUpdating(s._id);
+                            try {
+                              await updateStaff({ token, staffId: s._id, isActive: !s.isActive });
+                              toast.success(`${s.name} ${s.isActive ? "deactivated" : "reactivated"}`);
+                            } catch (e: any) {
+                              toast.error(e.message);
+                            } finally {
+                              setIsUpdating(null);
+                            }
+                          }}
+                          className={cn(
+                            "text-[10px] h-7 px-2 rounded-lg font-bold transition-all",
+                            s.isActive 
+                              ? "text-rose-600 hover:bg-rose-50" 
+                              : "text-green-600 hover:bg-green-50",
+                            isUpdating === s._id && "opacity-50 cursor-not-allowed"
+                          )}
+                        >
+                          {isUpdating === s._id 
+                            ? "Wait..." 
+                            : s.isActive ? "Deactivate" : "Activate"
+                          }
+                        </Button>
+                      </>
                     )}
-                  >
-                    {s.isActive ? "Deactivate" : "Reactivate"}
-                  </Button>
+                  </div>
                 )}
               </div>
             </div>

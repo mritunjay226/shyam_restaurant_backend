@@ -29,11 +29,11 @@ const TABS = [
 ];
 
 const DEFAULT_FORM: GeneralFormData = {
-  hotelName: "Shyam Hotel",
+  hotelName: "Sarovar Palace",
   gstin: "09AABCU9603R1ZN",
-  address: "1, Mahatma Gandhi Marg, Civil Lines, Prayagraj - 211001",
-  email: "admin@shyamhotel.in",
-  phone: "+91 98765 43210",
+  address: "123 Sarovar Avenue, Civil Lines, Prayagraj - 211001",
+  email: "admin@sarovarpalace.in",
+  phone: "+91 91234 56789",
   roomGst: "12",
   foodGst: "5",
   alGst: "18",

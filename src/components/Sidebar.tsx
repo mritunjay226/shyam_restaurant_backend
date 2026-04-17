@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, DoorOpen, UtensilsCrossed, Coffee,
   PartyPopper, Receipt, BarChart3, Settings,
-  LogOut, ChevronRight, Users
+  LogOut, ChevronRight, Users, CalendarCheck, Wallet,
+  Store
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -21,6 +22,7 @@ const NAV_GROUPS = [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/rooms", label: "Rooms", icon: DoorOpen },
       { href: "/customers", label: "Customers", icon: Users },
+      { href: "/attendance", label: "Attendance", icon: CalendarCheck },
     ]
 
   },
@@ -30,6 +32,7 @@ const NAV_GROUPS = [
       { href: "/restaurant", label: "Restaurant", icon: UtensilsCrossed },
       { href: "/cafe", label: "Café", icon: Coffee },
       { href: "/kitchen", label: "Kitchen KDS", icon: UtensilsCrossed },
+      { href: "/store", label: "Store", icon: Store},
       { href: "/banquet", label: "Banquet & Events", icon: PartyPopper },
     ]
   },
@@ -37,6 +40,7 @@ const NAV_GROUPS = [
     label: "Finance",
     items: [
       { href: "/billing", label: "Billing", icon: Receipt },
+      { href: "/payroll", label: "Payroll", icon: Wallet },
       { href: "/reports", label: "Reports", icon: BarChart3 },
     ]
   },
@@ -52,6 +56,7 @@ export function SidebarContent({ isMobile = false }) {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   const { staff, logout } = useAuth();
+  const settings = useQuery(api.settings.getHotelSettings);
   const roleConfigs = useQuery(api.auth.getRolePermissions) || [];
   
   const userAllowedPaths = roleConfigs.find(c => c.role === staff?.role)?.allowedPaths || ["/"];
@@ -87,12 +92,16 @@ export function SidebarContent({ isMobile = false }) {
     <div className="flex flex-col h-full bg-white" style={{paddingTop: isElectron ? "36px" : "0px"}}>
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 h-[64px] border-b border-gray-100 shrink-0">
-        <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center text-white font-bold text-sm tracking-wide shrink-0 shadow-sm">
-          SH
+        <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center text-white font-bold text-sm tracking-wide shrink-0 shadow-sm overflow-hidden">
+          {settings?.hotelName ? (
+            <span className="uppercase">{settings.hotelName.substring(0, 2)}</span>
+          ) : (
+             "SP"
+          )}
         </div>
         <div className="leading-tight">
-          <p className="text-sm font-bold text-gray-900">Shyam Hotel</p>
-          <p className="text-[10px] text-gray-400 font-medium">Prayagraj</p>
+          <p className="text-sm font-bold text-gray-900 truncate max-w-[140px]">{settings?.hotelName || "Sarovar Palace"}</p>
+          <p className="text-[10px] text-gray-400 font-medium">{settings?.address.split(",")[0] || "Prayagraj"}</p>
         </div>
       </div>
 

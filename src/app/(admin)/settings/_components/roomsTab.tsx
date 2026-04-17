@@ -25,9 +25,10 @@ type EditRoom = {
 };
 
 export function RoomsTab() {
-    const allRooms = useQuery(api.rooms.getAllRooms) || [];
+    const allRooms = useQuery(api.rooms.getAllRooms, {}) || [];
     const addRoom = useMutation(api.rooms.addRoom);
     const updateRoom = useMutation(api.rooms.updateRoom);
+    const toggleActive = useMutation(api.rooms.toggleRoomActive);
 
     const [newRoom, setNewRoom] = useState({
         number: "", category: "Standard", floor: "", tariff: "", image: "", images: [] as string[],
@@ -152,27 +153,55 @@ export function RoomsTab() {
                                     </div>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-gray-900">Room {room.roomNumber}</p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-sm font-bold text-gray-900">Room {room.roomNumber}</p>
+                                        {!room.isActive && (
+                                            <span className="text-[9px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded uppercase tracking-tighter">
+                                                Inactive
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className="text-xs text-gray-500 capitalize">
                                         {room.category} · ₹{room.tariff}/night · {room.images?.length || (room.image ? 1 : 0)} photo(s)
                                     </p>
                                 </div>
-                                <button
-                                    onClick={() =>
-                                        setEditRoom({
-                                            _id: room._id,
-                                            category: room.category,
-                                            tariff: room.tariff.toString(),
-                                            description: room.description || "",
-                                            image: room.image || "",
-                                            images: room.images || (room.image ? [room.image] : []),
-                                            amenities: (room.amenities || []).join(", "),
-                                        })
-                                    }
-                                    className="p-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors shrink-0"
-                                >
-                                    <Pencil size={14} />
-                                </button>
+                                <div className="flex gap-1.5 shrink-0">
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                await toggleActive({ roomId: room._id });
+                                                toast.success(`Room ${room.roomNumber} ${room.isActive ? "deactivated" : "reactivated"}`);
+                                            } catch (e: any) {
+                                                toast.error(e.message);
+                                            }
+                                        }}
+                                        className={cn(
+                                            "p-2 rounded-lg transition-colors",
+                                            room.isActive 
+                                                ? "bg-rose-50 text-rose-600 hover:bg-rose-100" 
+                                                : "bg-green-50 text-green-700 hover:bg-green-100"
+                                        )}
+                                        title={room.isActive ? "Deactivate Room" : "Reactivate Room"}
+                                    >
+                                        <X size={14} className={cn(!room.isActive && "rotate-45")} />
+                                    </button>
+                                    <button
+                                        onClick={() =>
+                                            setEditRoom({
+                                                _id: room._id,
+                                                category: room.category,
+                                                tariff: room.tariff.toString(),
+                                                description: room.description || "",
+                                                image: room.image || "",
+                                                images: room.images || (room.image ? [room.image] : []),
+                                                amenities: (room.amenities || []).join(", "),
+                                            })
+                                        }
+                                        className="p-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                                    >
+                                        <Pencil size={14} />
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>

@@ -78,11 +78,25 @@ export const getActiveOrdersByOutlet = query({
       .query("orders")
       .withIndex("by_outlet_table", (q) => q.eq("outlet", args.outlet))
       .filter((q) =>
-        q.or(
-          q.eq(q.field("status"), "kot_generated"),
-          q.eq(q.field("status"), "preparing"),
-          q.eq(q.field("status"), "ready")
+        q.and(
+          q.or(
+            q.eq(q.field("status"), "kot_generated"),
+            q.eq(q.field("status"), "preparing"),
+            q.eq(q.field("status"), "ready")
+          ),
+          q.eq(q.field("roomId"), undefined)
         )
+      )
+      .collect(),
+});
+
+export const getActiveKitchenOrders = query({
+  handler: async (ctx) =>
+    ctx.db
+      .query("orders")
+      .withIndex("by_status")
+      .filter((q: any) =>
+        q.or(q.eq(q.field("status"), "kot_generated"), q.eq(q.field("status"), "preparing"))
       )
       .collect(),
 });
@@ -125,7 +139,10 @@ export const getUnbilledTableOrders = query({
     ctx.db
       .query("orders")
       .filter((q) =>
-        q.and(q.eq(q.field("roomId"), undefined), q.neq(q.field("status"), "paid"))
+        q.and(
+          q.eq(q.field("roomId"), undefined), 
+          q.neq(q.field("status"), "paid")
+        )
       )
       .collect(),
 });
@@ -228,18 +245,35 @@ export const markOrderPaid = mutation({
 });
 
 export const transferTable = mutation({
-  args: { outlet: v.string(), fromTableNumber: v.string(), toTableNumber: v.string() },
+  args: { 
+    outlet: v.string(), 
+    fromTableNumber: v.string(), 
+    toTableNumber: v.optional(v.string()), 
+    toRoomId: v.optional(v.id("rooms")) 
+  },
   handler: async (ctx, args) => {
+    if (!args.toTableNumber && !args.toRoomId) throw new Error("Target table or room required");
+
     const orders = await ctx.db
       .query("orders")
       .withIndex("by_outlet_table", (q) =>
         q.eq("outlet", args.outlet).eq("tableNumber", args.fromTableNumber)
       )
-      .filter((q) =>
-        q.and(q.eq(q.field("roomId"), undefined), q.neq(q.field("status"), "paid"))
-      )
+      .filter((q) => q.neq(q.field("status"), "paid"))
       .collect();
-    for (const o of orders) await ctx.db.patch(o._id, { tableNumber: args.toTableNumber });
+
+    for (const o of orders) {
+      if (args.toRoomId) {
+        await ctx.db.patch(o._id, { 
+          roomId: args.toRoomId, 
+          tableNumber: "Room Service" 
+        });
+      } else if (args.toTableNumber) {
+        await ctx.db.patch(o._id, { 
+          tableNumber: args.toTableNumber
+        });
+      }
+    }
     return orders.length;
   },
 });

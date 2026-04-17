@@ -61,9 +61,9 @@ export const updateHotelSettings = mutation({
     if (!existing) {
       // If it doesn't exist during update, create it with defaults
       return await ctx.db.insert("hotelSettings", {
-        hotelName: args.hotelName || "The Grand Hotel",
-        address: args.address || "123 default avenue",
-        phone: args.phone || "+91 00000 00000",
+        hotelName: args.hotelName || "Sarovar Palace",
+        address: args.address || "Sarovar Palace, Civil Lines, Prayagraj",
+        phone: args.phone || "+91 91234 56789",
         gstin: args.gstin || "N/A",
         checkInTime: args.checkInTime || "12:00 PM",
         checkOutTime: args.checkOutTime || "11:00 AM",
@@ -75,7 +75,36 @@ export const updateHotelSettings = mutation({
         requireIdUpload: args.requireIdUpload,
       });
     }
-
     return await ctx.db.patch(existing._id, args);
+  },
+});
+
+// SYNC BRANDING (one-off fix)
+export const syncBranding = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const existing = await ctx.db.query("hotelSettings").first();
+    const branding = {
+      hotelName: "Sarovar Palace",
+      address: "Sarovar Palace, Civil Lines, Prayagraj",
+      phone: "+91 91234 56789",
+      email: "contact@sarovarpalace.com",
+      gstin: "09AABCU9603R1ZN",
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, branding);
+      return "Updated existing settings to Sarovar Palace";
+    } else {
+      await ctx.db.insert("hotelSettings", {
+        ...branding,
+        checkInTime: "12:00 PM",
+        checkOutTime: "11:00 AM",
+        roomGst: 12,
+        foodGst: 5,
+        alGst: 18,
+      });
+      return "Created new settings with Sarovar Palace branding";
+    }
   },
 });

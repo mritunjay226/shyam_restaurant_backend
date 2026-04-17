@@ -14,7 +14,7 @@ export const getBillsByDate = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("bills")
-      .filter((q) => q.eq(q.field("createdAt"), args.date))
+      .withIndex("by_createdAt", (q: any) => q.eq("createdAt", args.date))
       .collect();
   },
 });
@@ -23,8 +23,13 @@ export const getBillsByDate = query({
 export const getBillsByMonth = query({
   args: { month: v.string() },
   handler: async (ctx, args) => {
-    const allBills = await ctx.db.query("bills").collect();
-    return allBills.filter((bill) => bill.createdAt.startsWith(args.month));
+    // Prefix match using range query for best performance
+    return await ctx.db
+      .query("bills")
+      .withIndex("by_createdAt", (q: any) =>
+        q.gte("createdAt", args.month).lte("createdAt", args.month + "\uffff")
+      )
+      .collect();
   },
 });
 
@@ -33,6 +38,7 @@ export const generateRoomBill = mutation({
   args: {
     bookingId: v.id("bookings"),
     isGstBill: v.boolean(),
+    includeFoodGst: v.optional(v.boolean()),
     gstin: v.optional(v.string()),
     paymentMethod: v.string(),
     discountAmount: v.optional(v.number()),
@@ -57,11 +63,12 @@ export const generateRoomBill = mutation({
     if (nights === 0) nights = 1;
 
     const roomTotal = booking.tariff * nights;
+    const extraBedTotal = booking.extraBed ? (nights * 500) : 0;
 
     // Get linked restaurant/cafe orders
     const linkedOrders = await ctx.db
       .query("orders")
-      .filter((q) =>
+      .filter((q: any) =>
         q.and(
           q.eq(q.field("roomId"), booking.roomId),
           q.neq(q.field("status"), "paid")
@@ -74,7 +81,7 @@ export const generateRoomBill = mutation({
       0
     );
 
-    let subtotal = roomTotal + orderTotal;
+    let subtotal = roomTotal + extraBedTotal + orderTotal;
 
     // Apply additional charges
     const sc = args.serviceCharge || 0;
@@ -86,15 +93,35 @@ export const generateRoomBill = mutation({
     const discount = args.discountAmount || 0;
     subtotal = Math.max(0, subtotal - discount);
 
-    // GST on full subtotal (after charges & discount)
-    let cgst = 0;
-    let sgst = 0;
+    // Fetch settings for GST rates
+    const settings = await ctx.db.query("hotelSettings").first();
+    const roomGstRate = (settings?.roomGst || 12) / 100;
+    const foodGstRate = (settings?.foodGst || 5) / 100;
+
+    // 1. Calculate Room-only GST
+    // We apply room GST rate to (roomTotal + serviceCharge + housekeepingCharge + extraCharge - discount)
+    // Note: Discount and extra charges are usually applied to the room portion in hospitality.
+    let roomSubtotal = roomTotal + extraBedTotal + sc + hc + ec - discount;
+    roomSubtotal = Math.max(0, roomSubtotal);
+    
+    let roomCgst = 0;
+    let roomSgst = 0;
     if (args.isGstBill) {
-      cgst = subtotal * 0.06;
-      sgst = subtotal * 0.06;
+      roomCgst = roomSubtotal * (roomGstRate / 2);
+      roomSgst = roomSubtotal * (roomGstRate / 2);
     }
 
-    const totalAmount = subtotal + cgst + sgst;
+    // 2. Aggregate Food GST from linked orders
+    // The orders already have gstAmount calculated at their specific rates (5% or 18%)
+    const foodGstTotal = linkedOrders.reduce((sum, o) => sum + (o.gstAmount || 0), 0);
+    const orderSubtotal = linkedOrders.reduce((sum, o) => sum + (o.subtotal || 0), 0);
+    
+    // Food GST is added ONLY if BOTH main GST toggle and specific Food GST toggle are on
+    const includeFood = args.includeFoodGst !== false && args.isGstBill;
+    const cgst = roomCgst + (includeFood ? (foodGstTotal / 2) : 0);
+    const sgst = roomSgst + (includeFood ? (foodGstTotal / 2) : 0);
+
+    const totalAmount = roomSubtotal + orderSubtotal + cgst + sgst;
 
     // Advance deduction
     const advance = booking.advance || 0;
@@ -126,6 +153,14 @@ export const generateRoomBill = mutation({
     for (const order of linkedOrders) {
       await ctx.db.patch(order._id, { status: "paid" });
     }
+
+    // AUDIT LOG
+    await ctx.db.insert("auditLog", {
+      staffId: (await ctx.db.query("staff").first())?._id!, // Placeholder: in real RBAC we'd have it in ctx
+      action: "generate_room_bill",
+      details: `Bill ${billId} generated for Room ${booking.roomId}. Total: ₹${totalAmount}`,
+      timestamp: Date.now(),
+    });
 
     return billId;
   },
@@ -221,6 +256,7 @@ export const generateTableBill = mutation({
     outlet: v.string(),
     tableNumber: v.string(),
     isGstBill: v.boolean(),
+    includeFoodGst: v.optional(v.boolean()),
     gstin: v.optional(v.string()),
     paymentMethod: v.string(),
     guestName: v.optional(v.string()),
@@ -236,10 +272,10 @@ export const generateTableBill = mutation({
   handler: async (ctx, args) => {
     const orders = await ctx.db
       .query("orders")
-      .withIndex("by_outlet_table", (q) =>
+      .withIndex("by_outlet_table", (q: any) =>
         q.eq("outlet", args.outlet).eq("tableNumber", args.tableNumber)
       )
-      .filter((q) =>
+      .filter((q: any) =>
         q.and(
           q.eq(q.field("roomId"), undefined),
           q.neq(q.field("status"), "paid")
@@ -247,8 +283,29 @@ export const generateTableBill = mutation({
       )
       .collect();
 
-    if (orders.length === 0)
-      throw new Error("No unbilled orders found for this table");
+    if (orders.length === 0) {
+      // Check if orders for this table were transferred to a room
+      const transferredOrders = await ctx.db
+        .query("orders")
+        .withIndex("by_outlet_table", (q) =>
+          q.eq("outlet", args.outlet).eq("tableNumber", args.tableNumber)
+        )
+        .filter((q) => q.neq(q.field("roomId"), undefined))
+        .collect();
+
+      if (transferredOrders.length > 0) {
+        const roomIds = Array.from(new Set(transferredOrders.map(o => o.roomId)));
+        const rooms = await Promise.all(roomIds.map(id => ctx.db.get(id!)));
+        const roomNumbers = rooms.map(r => r?.roomNumber).filter(Boolean).join(", ");
+        
+        throw new Error(
+          `This table's orders have been transferred to Room ${roomNumbers || "[Unknown]"}. ` +
+          `Please settle the bill during Room Checkout.`
+        );
+      }
+
+      throw new Error("No unbilled orders found for this table. Ensure the table is occupied and orders are active.");
+    }
 
     let subtotal = orders.reduce((sum, order) => sum + order.subtotal, 0);
 
@@ -260,11 +317,15 @@ export const generateTableBill = mutation({
     const discount = args.discountAmount || 0;
     subtotal = Math.max(0, subtotal - discount);
 
+    // Fetch settings for GST rates
+    const settings = await ctx.db.query("hotelSettings").first();
+    const gstRate = (settings?.foodGst || 5) / 100; // Default to 5% if not set
+
     let cgst = 0;
     let sgst = 0;
-    if (args.isGstBill) {
-      cgst = subtotal * 0.06;
-      sgst = subtotal * 0.06;
+    if (args.isGstBill && args.includeFoodGst !== false) {
+      cgst = subtotal * (gstRate / 2);
+      sgst = subtotal * (gstRate / 2);
     }
 
     const totalAmount = subtotal + cgst + sgst;
@@ -292,6 +353,14 @@ export const generateTableBill = mutation({
     for (const order of orders) {
       await ctx.db.patch(order._id, { status: "paid" });
     }
+
+    // AUDIT LOG
+    await ctx.db.insert("auditLog", {
+      staffId: (await ctx.db.query("staff").first())?._id!,
+      action: "generate_table_bill",
+      details: `Table ${args.tableNumber} billed. Bill Id: ${billId}. Total: ₹${totalAmount}`,
+      timestamp: Date.now(),
+    });
 
     return billId;
   },

@@ -394,7 +394,7 @@ export default function Dashboard() {
   const today = format(new Date(), "yyyy-MM-dd");
 
   // ── Hotel data ──────────────────────────────────────────────────
-  const rooms          = useQuery(api.rooms.getAllRooms) ?? [];
+  const rooms          = useQuery(api.rooms.getAllRooms, {}) ?? [];
   const arrivals       = useQuery(api.bookings.getTodayArrivals, { today }) ?? [];
   const departures     = useQuery(api.bookings.getTodayDepartures, { today }) ?? [];
   const allBookings    = useQuery(api.bookings.getAllBookings) ?? [];
@@ -409,7 +409,7 @@ export default function Dashboard() {
   const cafeMenu            = useQuery(api.menuItems.getMenuByOutlet, { outlet: "cafe" }) ?? [];
 
   // ── Banquet data ───────────────────────────────────────────────
-  const halls               = useQuery(api.banquet.getAllHalls) ?? [];
+  const halls               = useQuery(api.banquet.getAllHalls, {}) ?? [];
   const allBanquetBookings  = useQuery(api.banquet.getAllBanquetBookings) ?? [];
 
   const todayRevenue = dashStats?.todayRevenue ?? 0;
@@ -424,7 +424,7 @@ export default function Dashboard() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <h1 className="text-2xl font-bold text-gray-900">{getGreeting()}, Admin! 👋</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {format(new Date(), "EEEE, d MMMM yyyy")} · Here's everything happening at Shyam Hotel today.
+            {format(new Date(), "EEEE, d MMMM yyyy")} · Here's everything happening at Sarovar Palace today.
           </p>
         </motion.div>
 
@@ -435,9 +435,12 @@ export default function Dashboard() {
         >
           <div className="flex items-center justify-between mb-1">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Total Revenue Today</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Total {TABS.find(t => t.id === activeTab)?.label} Revenue Today</p>
               <p className="text-3xl font-bold text-gray-900 tabular-nums mt-1">
-                ₹{todayRevenue.toLocaleString("en-IN")}
+                ₹{(activeTab === 'hotel' ? outletRevenue?.hotel : 
+                   activeTab === 'restaurant' ? outletRevenue?.restaurant :
+                   activeTab === 'cafe' ? outletRevenue?.cafe :
+                   activeTab === 'banquet' ? outletRevenue?.banquet : todayRevenue)?.toLocaleString("en-IN") || 0}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -467,11 +470,11 @@ export default function Dashboard() {
                   <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "#9CA3AF", fontSize: 12 }} dy={8} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: "#9CA3AF", fontSize: 11 }} tickFormatter={(v) => `₹${v / 1000}k`} />
                   <Tooltip
-                    cursor={{ fill: "rgba(22,163,74,0.05)", radius: 8 }}
+                    cursor={{ fill: `${TABS.find(t => t.id === activeTab)?.color}08`, radius: 8 }}
                     contentStyle={{ borderRadius: 12, border: "1px solid #E5E7EB", boxShadow: "0 4px 12px rgba(0,0,0,0.08)", fontSize: 13 }}
-                    formatter={(v: any) => [`₹${Number(v).toLocaleString("en-IN")}`, "Revenue"]}
+                    formatter={(v: any) => [`₹${Number(v).toLocaleString("en-IN")}`, `${TABS.find(t => t.id === activeTab)?.label} Revenue`]}
                   />
-                  <Bar dataKey="v" fill="#16A34A" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey={activeTab} fill={TABS.find(t => t.id === activeTab)?.color} radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}

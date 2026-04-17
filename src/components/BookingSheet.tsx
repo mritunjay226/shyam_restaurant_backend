@@ -6,6 +6,7 @@ import { RoomViewData } from "@/components/RoomCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { motion, AnimatePresence } from "framer-motion";
@@ -34,6 +35,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const [guestName, setGuestName] = useState("");
   const [phone, setPhone] = useState("");
   const [countryCode, setCountryCode] = useState("+91");
+  const [extraBed, setExtraBed] = useState(false);
 
   const [idType, setIdType] = useState("Aadhar");
   const [idNumber, setIdNumber] = useState("");
@@ -92,6 +94,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
       setIdNumber("");
       setCheckOut("");
       setNotes("");
+      setExtraBed(false);
       setIsFutureBookingMode(false);
     }
   }, [room]);
@@ -107,7 +110,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
     try {
       const days = differenceInDays(new Date(checkOut), new Date(checkIn));
       const totalNights = Math.max(1, days);
-      const computedTotal = parseInt(tariff) * totalNights;
+      const computedTotal = (parseInt(tariff) + (extraBed ? 500 : 0)) * totalNights;
 
       await createBooking({
         roomId: room._id as any,
@@ -121,6 +124,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
         tariff: parseInt(tariff),
         advance: parseInt(advance || "0"),
         totalAmount: computedTotal,
+        extraBed,
         notes
       });
       onClose();
@@ -155,7 +159,8 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   };
 
   const computedDays = checkOut ? Math.max(1, differenceInDays(new Date(checkOut), new Date(checkIn))) : 1;
-  const computedBalance = Math.max(0, parseInt(tariff || '0') * computedDays - parseInt(advance || '0'));
+  const computedTariff = parseInt(tariff || '0') + (extraBed ? 500 : 0);
+  const computedBalance = Math.max(0, computedTariff * computedDays - parseInt(advance || '0'));
 
   return (
     <AnimatePresence>
@@ -290,6 +295,19 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                         <Label className="text-xs font-semibold text-gray-700">Advance Paid (<span className="text-gray-400">₹</span>)</Label>
                         <Input type="number" value={advance} onChange={e => setAdvance(e.target.value)} onPointerDown={onPointerDown} className="h-11 rounded-xl bg-green-50/50 border-green-200 text-green-700 font-bold tabular-nums" />
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                      <Plus size={14} /> Add-ons
+                    </h3>
+                    <div className="flex items-center justify-between bg-gray-50/80 p-3 rounded-xl border border-gray-100">
+                      <div>
+                        <Label className="text-xs font-bold text-gray-700">Extra Bed</Label>
+                        <p className="text-[10px] text-gray-400">Additional room bed for ₹500/night</p>
+                      </div>
+                      <Switch checked={extraBed} onCheckedChange={setExtraBed} />
                     </div>
                   </div>
 

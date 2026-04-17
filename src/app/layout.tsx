@@ -22,12 +22,12 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Shyam Hotel — Admin Panel",
-  description: "Hotel & Restaurant Management System — Shyam Hotel, Prayagraj",
+  title: "Sarovar Palace — Admin Panel",
+  description: "Hotel & Restaurant Management System — Sarovar Palace, Prayagraj",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Shyam Hotel",
+    title: "Sarovar Palace",
   },
 };
 

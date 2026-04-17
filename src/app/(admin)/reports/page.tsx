@@ -10,25 +10,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { format } from "date-fns";
 
-const REVENUE_DATA = [
-  { name: "Jan", rooms: 400000, restaurant: 240000, banquets: 500000 },
-  { name: "Feb", rooms: 300000, restaurant: 200000, banquets: 450000 },
-  { name: "Mar", rooms: 450000, restaurant: 280000, banquets: 600000 },
-  { name: "Apr", rooms: 500000, restaurant: 320000, banquets: 800000 },
-  { name: "May", rooms: 420000, restaurant: 300000, banquets: 550000 },
-  { name: "Jun", rooms: 380000, restaurant: 250000, banquets: 400000 },
-];
-
-const OCCUPANCY_DATA = [
-  { name: "1st", rate: 65 }, { name: "5th", rate: 70 }, { name: "10th", rate: 85 },
-  { name: "15th", rate: 90 }, { name: "20th", rate: 82 }, { name: "25th", rate: 75 },
-  { name: "30th", rate: 88 },
-];
-
-const SPARK_REV    = [5, 8, 6, 11, 9, 13, 10, 14, 12, 16];
-const SPARK_GUESTS = [30, 28, 35, 40, 38, 42, 45, 43, 47, 45];
-const SPARK_OCC    = [70, 72, 68, 78, 82, 85, 80, 88, 84, 90];
-const SPARK_EVENTS = [8, 10, 7, 12, 11, 14, 13, 16, 15, 18];
+const DEFAULT_SPARK = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 export default function ReportsPage() {
   const [mounted, setMounted] = useState(false);
@@ -39,16 +21,30 @@ export default function ReportsPage() {
   const today = format(new Date(), "yyyy-MM-dd");
   const year = format(new Date(), "yyyy");
 
+  const summaryStats = useQuery(api.reports.getSummaryStats, { today, year });
   const yearlyReport = useQuery(api.reports.getYearlyReport, { year });
   const occupancyTrend = useQuery(api.reports.getOccupancyTrend, { today });
 
-  const chartRevenueData = yearlyReport ? yearlyReport.map(m => {
+  const chartRevenueData = yearlyReport?.map(m => {
     const d = new Date(m.month + "-01");
-    const mName = d.toLocaleDateString("en-US", { month: "short" });
-    return { name: mName, rooms: m.rooms, restaurant: m.restaurant + m.cafe, banquets: m.banquet };
-  }) : REVENUE_DATA;
+    return { 
+      name: d.toLocaleDateString("en-US", { month: "short" }), 
+      rooms: m.rooms, 
+      restaurant: m.restaurant + m.cafe, 
+      banquets: m.banquet 
+    };
+  }) || [];
 
-  const chartOccupancyData = occupancyTrend || OCCUPANCY_DATA;
+  const chartOccupancyData = occupancyTrend || [];
+
+  // Trend calculation helpers
+  const getTrend = (data: number[]) => {
+    if (!data || data.length < 2) return 0;
+    const last = data[data.length - 1];
+    const prev = data[data.length - 2];
+    if (prev === 0) return last > 0 ? 100 : 0;
+    return Math.round(((last - prev) / prev) * 100);
+  };
 
   return (
     <div className="flex flex-col min-h-full">
@@ -74,24 +70,42 @@ export default function ReportsPage() {
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            label="YTD Revenue" value={9800000} prefix="₹"
+            label="YTD Revenue" 
+            value={summaryStats?.ytdRevenue ?? 0} 
+            prefix="₹"
             icon={TrendingUp} iconBg="#DCFCE7" iconColor="#16A34A"
-            sparkData={SPARK_REV} sparkColor="#16A34A" trend={12} delay={0.05}
+            sparkData={summaryStats?.sparklines.revenue || DEFAULT_SPARK} 
+            sparkColor="#16A34A" 
+            trend={getTrend(summaryStats?.sparklines.revenue || [])} 
+            delay={0.05}
           />
           <StatCard
-            label="Avg Stay (guests)" value={45}
+            label="Avg Stay (nights)" 
+            value={summaryStats?.avgStay ?? 0}
             icon={Users} iconBg="#DBEAFE" iconColor="#2563EB"
-            sparkData={SPARK_GUESTS} sparkColor="#2563EB" trend={5} delay={0.1}
+            sparkData={summaryStats?.sparklines.guests || DEFAULT_SPARK} 
+            sparkColor="#2563EB" 
+            trend={getTrend(summaryStats?.sparklines.guests || [])} 
+            delay={0.1}
           />
           <StatCard
-            label="Avg Occupancy" value="78%" suffix=""
+            label="Avg Occupancy" 
+            value={`${summaryStats?.avgOccupancy ?? 0}%`} 
+            suffix=""
             icon={Home} iconBg="#FEF3C7" iconColor="#D97706"
-            sparkData={SPARK_OCC} sparkColor="#D97706" trend={-2} delay={0.15}
+            sparkData={summaryStats?.sparklines.occupancy || DEFAULT_SPARK} 
+            sparkColor="#D97706" 
+            trend={getTrend(summaryStats?.sparklines.occupancy || [])} 
+            delay={0.15}
           />
           <StatCard
-            label="Total Events" value={142}
+            label="Total Events" 
+            value={summaryStats?.totalEvents ?? 0}
             icon={Calendar} iconBg="#EDE9FE" iconColor="#7C3AED"
-            sparkData={SPARK_EVENTS} sparkColor="#7C3AED" trend={18} delay={0.2}
+            sparkData={summaryStats?.sparklines.events || DEFAULT_SPARK} 
+            sparkColor="#7C3AED" 
+            trend={getTrend(summaryStats?.sparklines.events || [])} 
+            delay={0.2}
           />
         </div>
 

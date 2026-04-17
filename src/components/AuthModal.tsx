@@ -63,6 +63,25 @@ export default function AuthModal() {
     }
   }, [pin, isSubmitting, handleLogin]);
 
+  // Handle physical keyboard input
+  useEffect(() => {
+    if (!selectedStaff) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Numbers 0-9
+      if (/^[0-9]$/.test(e.key)) {
+        handleKeyPress(e.key);
+      }
+      // Backspace/Delete
+      if (e.key === "Backspace" || e.key === "Delete") {
+        handleDelete();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedStaff, pin.length, isSubmitting]); // hooks into handleKeyPress/handleDelete dependencies
+
   return (
     <div className="fixed inset-0 z-100 flex items-center justify-center bg-linear-to-br from-gray-900/60 to-gray-800/80 backdrop-blur-xl">
       <div className="m-auto w-full max-w-sm px-4">
@@ -105,7 +124,7 @@ export default function AuthModal() {
                 className="flex-1 flex flex-col"
               >
                 <div className="text-center mb-8">
-                  <h1 className="text-2xl font-black text-gray-900 tracking-tight">Kothi Junction</h1>
+                  <h1 className="text-2xl font-black text-gray-900 tracking-tight">Sarovar Palace</h1>
                   <p className="text-sm font-semibold text-gray-400 mt-1 uppercase tracking-widest">Select Account</p>
                 </div>
 

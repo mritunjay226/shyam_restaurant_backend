@@ -76,6 +76,7 @@ export const createMenuItem = mutation({
     ),
     availabilityWindow: v.optional(v.string()),
     isAvailable: v.boolean(),
+    image: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("banquetMenuItems", args);
@@ -95,6 +96,7 @@ export const updateMenuItem = mutation({
       v.union(v.literal("veg"), v.literal("non-veg"), v.literal("egg"))
     ),
     availabilityWindow: v.optional(v.string()),
+    image: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { id, ...updates } = args;

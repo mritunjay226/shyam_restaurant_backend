@@ -20,6 +20,17 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeftRight } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type MenuItemType = Doc<"banquetMenuItems"> & { category?: string };
 
@@ -32,6 +43,144 @@ type BillPreviewState = {
   paymentMethod: string;
   discount: string;
 };
+
+const TABLES = [...Array.from({ length: 8 }).map((_, i) => `T${i + 1}`), "Walk-in", "Takeaway", "Delivery"];
+
+// ── Transfer Dialog Component ──
+function TransferDialog({
+  outlet,
+  fromTable,
+  onSuccess
+}: {
+  outlet: string;
+  fromTable: string;
+  onSuccess: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [transferType, setTransferType] = useState<"table" | "room">("table");
+  const [targetTable, setTargetTable] = useState("");
+  const [targetRoomId, setTargetRoomId] = useState<string>("");
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  const occupiedRooms = useQuery(api.rooms.getOccupiedRoomsWithGuest) || [];
+  const transferMutation = useMutation(api.orders.transferTable);
+
+  const handleTransfer = async () => {
+    if (transferType === "table" && !targetTable.trim()) {
+      toast.error("Please enter a target table number");
+      return;
+    }
+    if (transferType === "room" && !targetRoomId) {
+      toast.error("Please select a target room");
+      return;
+    }
+
+    setIsTransferring(true);
+    try {
+      await transferMutation({
+        outlet,
+        fromTableNumber: fromTable,
+        toTableNumber: transferType === "table" ? targetTable : undefined,
+        toRoomId: transferType === "room" ? (targetRoomId as Id<"rooms">) : undefined,
+      });
+      toast.success(
+        transferType === "table" 
+          ? `Transferred orders to Table ${targetTable}` 
+          : `Transferred orders to Room ${occupiedRooms.find(r => r._id === targetRoomId)?.roomNumber}`
+      );
+      setOpen(false);
+      onSuccess();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to transfer orders");
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-full hover:bg-indigo-50 text-indigo-600"
+          />
+        }
+      >
+        <ArrowLeftRight size={16} />
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[425px] rounded-3xl">
+        <DialogHeader>
+          <DialogTitle>Transfer Active Orders</DialogTitle>
+          <p className="text-xs text-gray-500">Move all KOTs from Table {fromTable} to another destination.</p>
+        </DialogHeader>
+
+        <Tabs defaultValue="table" value={transferType} onValueChange={(v: any) => setTransferType(v)} className="w-full mt-4">
+          <TabsList className="grid w-full grid-cols-2 rounded-xl bg-gray-100 p-1">
+            <TabsTrigger value="table" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm text-xs font-bold">To Table</TabsTrigger>
+            <TabsTrigger value="room" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm text-xs font-bold">To Room</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="table" className="pt-4 space-y-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-gray-700">Target Table Number</Label>
+              <Select value={targetTable} onValueChange={(v) => setTargetTable(v || "")}>
+                <SelectTrigger className="rounded-xl border-gray-200 bg-white">
+                  <SelectValue placeholder="Select target table..." />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl border-gray-100 shadow-xl max-h-60 custom-scrollbar">
+                  {TABLES.filter(t => t !== fromTable).map((t) => (
+                    <SelectItem key={t} value={t} className="rounded-lg focus:bg-indigo-50 focus:text-indigo-700 font-bold text-sm">
+                      {t.startsWith("T") && t.length === 2 ? `Table ${t.slice(1)}` : t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-gray-400">If the target table is occupied, the bills will merge.</p>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="room" className="pt-4 space-y-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-gray-700">Select Occupied Room</Label>
+              <Select value={targetRoomId} onValueChange={(val) => setTargetRoomId(val || "")}>
+                <SelectTrigger className="rounded-xl border-gray-200 bg-white">
+                  <SelectValue placeholder="Select a room..." />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl border-gray-100 shadow-xl">
+                  {occupiedRooms.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-gray-400">No rooms currently occupied</div>
+                  ) : (
+                    occupiedRooms.map((room) => (
+                      <SelectItem key={room._id} value={room._id} className="rounded-lg focus:bg-indigo-50 focus:text-indigo-700">
+                        <div className="flex flex-col items-start px-1">
+                          <span className="font-bold text-sm">Room {room.roomNumber}</span>
+                          <span className="text-[10px] text-gray-400 font-medium">Guest: {room.guestName}</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-gray-400">The bill will be added to the guest's checkout invoice.</p>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter className="mt-6">
+          <Button 
+            className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold uppercase text-xs tracking-wider"
+            onClick={handleTransfer}
+            disabled={isTransferring}
+          >
+            {isTransferring ? "Processing Transfer..." : "Confirm Transfer"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // ── Individual Table Bill Card ──
 function TableBillCard({
@@ -97,9 +246,12 @@ function TableBillCard({
     <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
       {/* Table Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-50">
-        <div>
-          <h3 className="font-bold text-gray-900">{tableNo}</h3>
-          <p className="text-[10px] text-gray-400 font-bold tracking-widest">{orders.length} ACTIVE KOT(S)</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h3 className="font-bold text-gray-900">{tableNo}</h3>
+            <p className="text-[10px] text-gray-400 font-bold tracking-widest">{orders.length} ACTIVE KOT(S)</p>
+          </div>
+          <TransferDialog outlet={outlet} fromTable={tableNo} onSuccess={() => setIsExpanded(false)} />
         </div>
         <div className="text-right">
           <p className="font-black text-gray-900">₹{subtotal.toLocaleString()}</p>
@@ -312,8 +464,6 @@ interface CartItem extends MenuItemType {
   course?: string;
 }
 
-const TABLES = [...Array.from({ length: 8 }).map((_, i) => `T${i + 1}`), "Walk-in", "Takeaway", "Delivery"];
-
 export function POSMenu({ title, items, categories, accentColorClass, accentBorderClass, accentTextClass, outlet }: POSProps) {
   const [activeTable, setActiveTable] = useState("T1");
   const [activeCategory, setActiveCategory] = useState<string | undefined>();
@@ -321,13 +471,14 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
   const [carts, setCarts] = useState<Record<string, CartItem[]>>({});
   const [isOrderSheetOpen, setIsOrderSheetOpen] = useState(false);
   const [linkToRoom, setLinkToRoom] = useState(false);
-  const [roomNumber, setRoomNumber] = useState("");
+  const [selectedRoomId, setSelectedRoomId] = useState<Id<"rooms"> | "">("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [search, setSearch] = useState("");
 
   const createOrder = useMutation(api.orders.createOrder);
   const directCheckout = useMutation(api.billing.directCheckoutOrder);
-  const allRooms = useQuery(api.rooms.getAllRooms) || [];
+  const occupiedRooms = useQuery(api.rooms.getOccupiedRoomsWithGuest) || [];
+  const activeOrders = useQuery(api.orders.getActiveOrdersByOutlet, { outlet }) || [];
 
   const currentCart = carts[activeTable] || [];
 
@@ -388,10 +539,8 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
     setIsSubmitting(true);
     try {
       let roomIdToLink: Id<"rooms"> | undefined = undefined;
-      if (linkToRoom && roomNumber) {
-        const foundRoom = allRooms.find(r => r.roomNumber === roomNumber);
-        if (!foundRoom) { toast.error(`Room ${roomNumber} not found.`); setIsSubmitting(false); return; }
-        roomIdToLink = foundRoom._id;
+      if (linkToRoom && selectedRoomId) {
+        roomIdToLink = selectedRoomId as Id<"rooms">;
       }
       await createOrder({
         outlet,
@@ -473,27 +622,35 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-gray-900 tracking-tight">{title} Orders</h1>
           </div>
           
-          <Sheet>
-            <SheetTrigger 
-              render={
-                <Button variant="outline" className="h-10 rounded-xl gap-2 font-bold text-gray-700 bg-white shadow-sm border border-gray-200 shrink-0" />
-              }
-            >
-              <Receipt className="w-4 h-4" />
-              <span className="hidden sm:inline">Active KOTs</span>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col bg-gray-50/50">
-              <SheetHeader className="p-6 bg-white border-b border-gray-100 shrink-0">
-                <SheetTitle className="text-xl font-black text-gray-900 flex items-center gap-2">
-                  <Receipt className="w-5 h-5 text-emerald-500" />
-                  Active KOTs
-                </SheetTitle>
-              </SheetHeader>
-              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                 <ActiveOrdersList outlet={outlet} />
-              </div>
-            </SheetContent>
-          </Sheet>
+          <div className="relative">
+            <Sheet>
+              <SheetTrigger 
+                render={
+                  <Button variant="outline" className="h-10 rounded-xl gap-2 font-bold text-gray-700 bg-white shadow-sm border border-gray-200 shrink-0" />
+                }
+              >
+                <Receipt className="w-4 h-4" />
+                <span className="hidden sm:inline">Active KOTs</span>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col bg-gray-50/50">
+                <SheetHeader className="p-6 bg-white border-b border-gray-100 shrink-0">
+                  <SheetTitle className="text-xl font-black text-gray-900 flex items-center gap-2">
+                    <Receipt className="w-5 h-5 text-emerald-500" />
+                    Active KOTs
+                  </SheetTitle>
+                </SheetHeader>
+                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                   <ActiveOrdersList outlet={outlet} />
+                </div>
+              </SheetContent>
+            </Sheet>
+            
+            {activeOrders.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[20px] h-[20px] bg-red-600 text-white text-[10px] font-black rounded-full ring-2 ring-white shadow-lg animate-in zoom-in duration-300 pointer-events-none">
+                {activeOrders.length}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* ── Table Selector ── */}
@@ -501,7 +658,9 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
           <div
             className="flex flex-nowrap gap-1.5 overflow-x-auto pb-2 custom-scrollbar scrollbar-hide sm:scrollbar-default scroll-smooth w-full"
           >
-            {TABLES.map(t => (
+            {Array.from(new Set([...TABLES, ...activeOrders.map(o => o.tableNumber)])).map(t => {
+              const hasActiveOrder = activeOrders.some(o => o.tableNumber === t);
+              return (
               <button
                 key={t}
                 id={`table-${t}`}
@@ -516,15 +675,19 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
                   }
                 }}
                 className={cn(
-                  "px-4 py-2 rounded-full text-xs sm:text-sm font-bold border transition-all whitespace-nowrap shrink-0",
+                  "px-4 py-2 rounded-full text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 border",
                   activeTable === t
-                    ? "bg-gray-900 border-gray-900 text-white shadow-md shadow-gray-200"
-                    : "bg-white border-gray-100 text-gray-500 hover:text-gray-900 hover:border-gray-300"
+                    ? (hasActiveOrder 
+                        ? "bg-red-600 border-red-600 text-white shadow-md shadow-red-200"
+                        : "bg-gray-900 border-gray-900 text-white shadow-md shadow-gray-200")
+                    : (hasActiveOrder
+                        ? "bg-red-50/50 border-red-500 text-red-600 hover:bg-red-100 hover:border-red-600"
+                        : "bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-900")
                 )}
               >
                 {t.startsWith("T") && t.length === 2 ? `Table ${t.slice(1)}` : t}
               </button>
-            ))}
+            )})}
           </div>
         </div>
 
@@ -823,12 +986,30 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
                 <AnimatePresence>
                   {linkToRoom && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                      <Input
-                        value={roomNumber}
-                        onChange={e => setRoomNumber(e.target.value)}
-                        placeholder="Room number e.g. 101"
-                        className="h-11 rounded-xl border-gray-100 bg-gray-50 text-base font-bold"
-                      />
+                      <div className="space-y-1 mt-1">
+                        <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Selected Room</Label>
+                        <select
+                          value={selectedRoomId}
+                          onChange={(e) => setSelectedRoomId(e.target.value as Id<"rooms">)}
+                          className="w-full h-11 rounded-xl border-gray-100 bg-gray-50 text-sm font-bold px-3 focus:outline-none focus:ring-2 focus:ring-gray-900/10 appearance-none"
+                        >
+                          <option value="">Select occupied room...</option>
+                          {occupiedRooms.map((r: any) => (
+                            <option key={r._id} value={r._id}>
+                              Room {r.roomNumber} — {r.guestName}
+                            </option>
+                          ))}
+                        </select>
+                        {!selectedRoomId && (
+                           <p className="text-[10px] text-amber-600 font-bold px-1 mt-1">Please select a room to link the bill</p>
+                        )}
+                        {selectedRoomId && (
+                          <div className="bg-emerald-50 text-emerald-700 p-2 rounded-lg mt-1 border border-emerald-100">
+                             <p className="text-[10px] font-black uppercase tracking-tighter">Verified Guest</p>
+                             <p className="text-xs font-bold leading-none">{occupiedRooms.find((r: any) => r._id === selectedRoomId)?.guestName}</p>
+                          </div>
+                        )}
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -865,7 +1046,7 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
                     onClick={handlePrintKOT}
                     className={cn("flex-1 h-11 rounded-xl text-white font-black text-xs uppercase tracking-wider", accentColorClass)}
                   >
-                    {isSubmitting ? "…" : "KOT"}
+                    {isSubmitting ? "…" : `KOT · ${activeTable}`}
                   </Button>
                 </div>
               </div>

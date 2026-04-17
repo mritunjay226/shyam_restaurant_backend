@@ -23,8 +23,14 @@ function slotsConflict(a: string | undefined, b: string | undefined): boolean {
 // HALL QUERIES
 // ─────────────────────────────────────────────────────────────────
 
+// HALL QUERIES
 export const getAllHalls = query({
-  handler: async (ctx) => ctx.db.query("banquetHalls").collect(),
+  args: { includeInactive: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
+    const halls = await ctx.db.query("banquetHalls").collect();
+    if (args.includeInactive) return halls;
+    return halls.filter(h => h.isActive !== false);
+  },
 });
 
 export const getHallById = query({

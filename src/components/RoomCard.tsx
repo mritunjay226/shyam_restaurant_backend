@@ -14,6 +14,7 @@ export interface RoomViewData {
   nights?: number;
   advance?: number;
   bookingId?: string;
+  extraBed?: boolean;
 }
 
 interface RoomCardProps {
@@ -122,8 +123,15 @@ export function RoomCard({ room, onClick }: RoomCardProps) {
             <div className="space-y-2.5 w-full">
               {/* Guest Profile Bubble */}
               <div className="flex items-center gap-3 bg-gray-50/80 group-hover:bg-white transition-colors border border-gray-100 rounded-2xl p-2.5">
-                <div className="w-8 h-8 rounded-full bg-linear-to-tr from-green-600 to-emerald-400 flex items-center justify-center shrink-0 shadow-sm">
-                  <User size={14} className="text-white" />
+                <div className="relative shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-linear-to-tr from-green-600 to-emerald-400 flex items-center justify-center shadow-sm">
+                    <User size={14} className="text-white" />
+                  </div>
+                  {room.extraBed && (
+                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 border-2 border-white rounded-full flex items-center justify-center shadow-sm animate-bounce">
+                      <BedDouble size={8} className="text-white fill-white" />
+                    </div>
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-gray-900 truncate">{room.guestName}</p>

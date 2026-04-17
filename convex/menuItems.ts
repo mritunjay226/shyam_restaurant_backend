@@ -3,10 +3,15 @@ import { v } from "convex/values";
 
 // GET ALL MENU ITEMS
 export const getAllMenuItems = query({
-  handler: async (ctx) => {
+  args: { includeInactive: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
     const categories = await ctx.db.query("categories").collect();
     const categoryIdMap = new Map(categories.map(c => [c._id, c.name]));
-    const items = await ctx.db.query("banquetMenuItems").collect();
+    let items = await ctx.db.query("banquetMenuItems").collect();
+    
+    if (!args.includeInactive) {
+      items = items.filter(i => i.isAvailable !== false);
+    }
     
     return items.map(item => ({
       ...item,
@@ -47,10 +52,8 @@ export const getMenuByOutlet = query({
       .map(item => ({
         ...item,
         category: categoryIdMap.get(item.categoryId) || "Other",
-        // Ensure compatibility with frontend expecting 'id' instead of '_id' in some places 
-        // though Convex usually provides _id
       }))
-      .filter(item => targetCategories.includes(item.category));
+      .filter(item => targetCategories.includes(item.category) && item.isAvailable !== false);
   },
 });
 
