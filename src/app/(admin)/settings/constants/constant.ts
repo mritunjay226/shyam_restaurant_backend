@@ -7,6 +7,7 @@ export const ALL_PAGES = [
   { href: "/restaurant", label: "Restaurant" },
   { href: "/cafe", label: "Café" },
   { href: "/kitchen", label: "Kitchen KDS" },
+  { href: "/store", label: "Store" },
   { href: "/banquet", label: "Banquet & Events" },
   { href: "/billing", label: "Billing" },
   { href: "/reports", label: "Reports" },
