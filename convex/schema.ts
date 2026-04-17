@@ -32,15 +32,21 @@ export default defineSchema({
     advance: v.number(),
     balance: v.number(),
     totalAmount: v.number(),
-    status: v.string(),            // "confirmed","checked_in","checked_out","cancelled"
+    status: v.string(),            // "confirmed","checked_in","checked_out","cancelled","pending"
     gstBill: v.optional(v.boolean()),
     extraBed: v.optional(v.boolean()),
     notes: v.optional(v.string()),
-    source: v.optional(v.string()),              // "walk_in","phone","ota"
+    source: v.optional(v.string()),              // "walk_in","phone","ota","website"
+    razorpayOrderId: v.optional(v.string()),
+    paymentId: v.optional(v.string()),
+    paymentStatus: v.optional(v.string()),       // "pending", "paid", "failed"
+    trackingCode: v.optional(v.string()),
   })
     .index("by_room", ["roomId"])
     .index("by_checkIn", ["checkIn"])
-    .index("by_checkOut", ["checkOut"]),
+    .index("by_checkOut", ["checkOut"])
+    .index("by_trackingCode", ["trackingCode"])
+    .index("by_razorpayOrderId", ["razorpayOrderId"]),
 
   // GUEST PROFILES (repeat guest history)
   guests: defineTable({
@@ -166,6 +172,7 @@ export default defineSchema({
     defaultKitchenTab: v.optional(v.string()), // "restaurant" | "cafe"
     defaultBillingTab: v.optional(v.string()), // "rooms" | "tables"
     staffTypes: v.optional(v.array(v.string())),
+    advancePercentage: v.optional(v.number()),
   }),
 
   // STAFF (RBAC & Payroll)

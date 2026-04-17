@@ -41,6 +41,7 @@ const DEFAULT_FORM: GeneralFormData = {
   requireIdUpload: false,
   defaultKitchenTab: "restaurant",
   defaultBillingTab: "rooms",
+  advancePercentage: "20",
 };
 
 export default function SettingsPage() {
@@ -81,6 +82,7 @@ export default function SettingsPage() {
       requireIdUpload:        currentSettings.requireIdUpload        ?? prev.requireIdUpload,
       defaultKitchenTab:      currentSettings.defaultKitchenTab      || "restaurant",
       defaultBillingTab:      currentSettings.defaultBillingTab      || "rooms",
+      advancePercentage:      currentSettings.advancePercentage?.toString() || prev.advancePercentage,
     }));
     if (currentSettings.staffTypes) setStaffTypes(currentSettings.staffTypes);
   }, [currentSettings]);
@@ -126,6 +128,7 @@ export default function SettingsPage() {
         requireIdUpload:       formData.requireIdUpload,
         defaultKitchenTab:     formData.defaultKitchenTab,
         defaultBillingTab:     formData.defaultBillingTab,
+        advancePercentage:     parseFloat(formData.advancePercentage) || 20,
         staffTypes,
       });
       toast.success("Settings saved successfully!");

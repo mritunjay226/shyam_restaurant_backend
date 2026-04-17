@@ -21,6 +21,7 @@ export interface GeneralFormData {
     requireIdUpload: boolean;
     defaultKitchenTab: string;
     defaultBillingTab: string;
+    advancePercentage: string;
 }
 
 interface GeneralTabProps {
@@ -136,6 +137,25 @@ export function GeneralTab({
                                 <option value="tables">Table Bills</option>
                             </select>
                             <p className="text-[11px] text-gray-400">Which section opens by default in Billing.</p>
+                        </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="advancePercentage" className="text-xs font-semibold text-gray-700">Online Advance Percentage (%)</Label>
+                            <div className="relative">
+                               <Input 
+                                 id="advancePercentage" 
+                                 type="number" 
+                                 value={formData.advancePercentage} 
+                                 onChange={onChange} 
+                                 className={cn(inputClass, "pr-8")} 
+                                 min="0"
+                                 max="100"
+                               />
+                               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 font-mono">%</span>
+                            </div>
+                            <p className="text-[11px] text-gray-400">Portion of total guests pay online to confirm.</p>
                         </div>
                     </div>
                 </div>

@@ -870,7 +870,7 @@ function BarcodeScannerUI({
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-60 bg-black flex flex-col"
     >
-      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
+      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-linear-to-b from-black/80 to-transparent">
         <h3 className="text-white font-bold tracking-wide">Scan Product Barcode</h3>
         <div className="flex items-center gap-3">
           {hasTorch && (

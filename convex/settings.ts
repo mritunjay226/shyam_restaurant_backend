@@ -54,6 +54,7 @@ export const updateHotelSettings = mutation({
     defaultKitchenTab: v.optional(v.string()),
     defaultBillingTab: v.optional(v.string()),
     staffTypes: v.optional(v.array(v.string())),
+    advancePercentage: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db.query("hotelSettings").first();

@@ -23,7 +23,6 @@ function slotsConflict(a: string | undefined, b: string | undefined): boolean {
 // HALL QUERIES
 // ─────────────────────────────────────────────────────────────────
 
-// HALL QUERIES
 export const getAllHalls = query({
   args: { includeInactive: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
@@ -151,7 +150,7 @@ export const createBanquetBooking = mutation({
       }
     }
 
-    // ── 2. GUEST PROFILE (upsert) ──────────────────────────────────
+    // ── GUEST PROFILE (upsert) ──────────────────────────────────
     const existingGuest = await ctx.db
       .query("guests")
       .withIndex("by_phone", (q) => q.eq("phone", args.guestPhone))
@@ -171,7 +170,8 @@ export const createBanquetBooking = mutation({
       });
     }
 
-    return ctx.db.insert("banquetBookings", {
+    // ── CREATE BOOKING ─────────────────────────────────────────
+    const bookingId = await ctx.db.insert("banquetBookings", {
       hallId: args.hallId,
       eventName: args.eventName,
       eventType: args.eventType,
@@ -189,6 +189,24 @@ export const createBanquetBooking = mutation({
       notes: args.notes,
     });
 
+    // ── RECORD ADVANCE PAYMENT IN BILLS (shows in revenue) ─────
+    if (args.advance > 0) {
+      await ctx.db.insert("bills", {
+        billType: "banquet",
+        referenceId: bookingId as string,
+        guestName: args.guestName,
+        isGstBill: false,
+        subtotal: args.advance,
+        cgst: 0,
+        sgst: 0,
+        totalAmount: args.advance,
+        advancePaid: args.advance,
+        status: "paid",
+        createdAt: new Date().toISOString().split("T")[0],
+      });
+    }
+
+    return bookingId;
   },
 });
 
