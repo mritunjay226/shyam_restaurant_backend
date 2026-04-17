@@ -6,12 +6,11 @@ import { X, Package, ScanLine, Loader2, Flashlight, FlashlightOff } from "lucide
 import { useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { toast } from "sonner";
-import { readBarcodesFromImageFile } from "zxing-wasm/reader";
 
-const UNITS = ["kg", "g", "litre", "ml", "piece", "packet", "dozen", "bundle", "box", "can", "bottle"];
+const UNITS = ["kg", "g", "litre", "ml", "piece", "packet", "dozen", "bundle", "box", "can", "bottle", "spray", "tube", "sachet", "strip", "pair"];
 const GST_RATES = [0, 5, 12, 18, 28];
 
-// ── GST inference from Open Food Facts category tags ──────────────
+// ── GST inference ─────────────────────────────────────────────────
 function inferGstRate(categoryTags: string[] = []): number {
   const tags = categoryTags.join(" ").toLowerCase();
   if (tags.includes("beverage") || tags.includes("drink") || tags.includes("aerated")) return 12;
@@ -20,18 +19,188 @@ function inferGstRate(categoryTags: string[] = []): number {
   if (tags.includes("grain") || tags.includes("cereal") || tags.includes("rice") || tags.includes("wheat") || tags.includes("flour")) return 0;
   if (tags.includes("oil") || tags.includes("fat")) return 5;
   if (tags.includes("spice") || tags.includes("condiment") || tags.includes("sauce")) return 12;
-  return 0; // default: unpackaged food staples
+  if (tags.includes("cosmetic") || tags.includes("beauty") || tags.includes("skin") || tags.includes("hair")) return 18;
+  if (tags.includes("detergent") || tags.includes("cleaning") || tags.includes("household")) return 18;
+  if (tags.includes("medicine") || tags.includes("pharmaceutical") || tags.includes("drug")) return 12;
+  return 0;
 }
 
-// ── Unit parser from quantity string ─────────────────────────────
+// ── Unit parser ───────────────────────────────────────────────────
 function parseUnit(qtyString: string): string | null {
+  if (!qtyString) return null;
   const lower = qtyString.toLowerCase();
   for (const u of UNITS) {
     if (lower.includes(u)) return u;
   }
-  if (lower.includes("l") && /\d/.test(lower)) return "litre";
+  if (lower.includes(" l") && /\d/.test(lower)) return "litre";
   if (lower.includes("gm")) return "g";
+  if (lower.includes("ml")) return "ml";
   return null;
+}
+
+// ── Normalized product shape from any source ──────────────────────
+interface NormalizedProduct {
+  name: string;
+  brandName: string;
+  manufacturer: string;
+  ingredients: string;
+  countryOfOrigin: string;
+  packagingType: string;
+  image: string;
+  unit: string;
+  gstRate: number;
+  description: string;
+  isVegetarian: boolean;
+  isVegan: boolean;
+  isOrganic: boolean;
+  category: string;
+  productType: "food" | "beauty" | "household" | "general";
+}
+
+// ── OFF-family fields we actually need (used for ?fields= param) ──
+const OFF_FIELDS = [
+  "product_name", "product_name_en", "brands", "manufacturing_places",
+  "producer", "ingredients_text", "countries", "packaging", "image_front_url",
+  "quantity", "categories_tags", "labels_tags", "generic_name", "categories",
+  "stores", "origins", "allergens_tags", "nutriments"
+].join(",");
+
+// ── Source 1 & 2 & 3: Open Food/Beauty/Products Facts (same API, diff domain) ──
+async function fetchFromOpenFacts(
+  domain: string,
+  barcode: string
+): Promise<NormalizedProduct | null> {
+  try {
+    const res = await fetch(
+      `https://${domain}/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`
+    );
+    const data = await res.json();
+    if (data.status !== 1 || !data.product) return null;
+
+    const p = data.product;
+    const labels: string[] = p.labels_tags || [];
+    const categoryTags: string[] = p.categories_tags || [];
+
+    const productType: NormalizedProduct["productType"] =
+      domain.includes("beauty")
+        ? "beauty"
+        : domain.includes("products")
+        ? "household"
+        : "food";
+
+    return {
+      name: p.product_name || p.product_name_en || "",
+      brandName: p.brands?.split(",")[0]?.trim() || "",
+      manufacturer: p.manufacturing_places || p.producer || "",
+      ingredients: p.ingredients_text || "",
+      countryOfOrigin: p.countries?.split(",")[0]?.trim() || p.origins?.split(",")[0]?.trim() || "",
+      packagingType: p.packaging?.split(",")[0]?.trim() || "",
+      image: p.image_front_url || "",
+      unit: parseUnit(p.quantity || "") || "piece",
+      gstRate: inferGstRate(categoryTags),
+      description: p.generic_name || "",
+      isVegetarian: labels.some((l) => l.includes("vegetarian")),
+      isVegan: labels.some((l) => l.includes("vegan")),
+      isOrganic: labels.some((l) => l.includes("organic")),
+      category: (p.categories || "").split(",")[0]?.trim() || "",
+      productType,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ── Source 4: UPCitemdb (no signup, 100 req/day free) ─────────────
+async function fetchFromUPCitemdb(barcode: string): Promise<NormalizedProduct | null> {
+  try {
+    const res = await fetch(
+      `https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`
+    );
+    const data = await res.json();
+    if (data.code !== "OK" || !data.items?.length) return null;
+
+    const item = data.items[0];
+    // upcitemdb gives: title, brand, description, category, images[], weight, dimension, color, size, manufacturer
+    return {
+      name: item.title || "",
+      brandName: item.brand || "",
+      manufacturer: item.manufacturer || "",
+      ingredients: "",
+      countryOfOrigin: "",
+      packagingType: "",
+      image: item.images?.[0] || "",
+      unit: parseUnit(item.size || item.weight || "") || "piece",
+      gstRate: 18, // conservative default for non-food items
+      description: item.description || item.category || "",
+      isVegetarian: false,
+      isVegan: false,
+      isOrganic: false,
+      category: item.category || "",
+      productType: "general",
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ── Master waterfall: tries all 4 sources in order ────────────────
+async function waterfallLookup(
+  barcode: string,
+  onProgress: (msg: string) => void
+): Promise<{ product: NormalizedProduct; source: string } | null> {
+  const sources: Array<{ label: string; fn: () => Promise<NormalizedProduct | null> }> = [
+    {
+      label: "Open Food Facts",
+      fn: () => fetchFromOpenFacts("world.openfoodfacts.org", barcode),
+    },
+    {
+      label: "Open Beauty Facts",
+      fn: () => fetchFromOpenFacts("world.openbeautyfacts.org", barcode),
+    },
+    {
+      label: "Open Products Facts",
+      fn: () => fetchFromOpenFacts("world.openproductsfacts.org", barcode),
+    },
+    {
+      label: "UPCitemdb",
+      fn: () => fetchFromUPCitemdb(barcode),
+    },
+  ];
+
+  for (const source of sources) {
+    onProgress(`Checking ${source.label}...`);
+    const result = await source.fn();
+    if (result && result.name) {
+      return { product: result, source: source.label };
+    }
+  }
+
+  return null;
+}
+
+// ── Form state type ───────────────────────────────────────────────
+interface FormState {
+  name: string;
+  category: string;
+  customCategory: string;
+  subCategory: string;
+  barcode: string;
+  unit: string;
+  sellingPrice: string;
+  costPrice: string;
+  gstRate: string;
+  stockQuantity: string;
+  lowStockThreshold: string;
+  description: string;
+  brandName: string;
+  manufacturer: string;
+  ingredients: string;
+  isVegetarian: boolean;
+  isVegan: boolean;
+  isOrganic: boolean;
+  countryOfOrigin: string;
+  packagingType: string;
+  image: string;
 }
 
 interface GroceryAddProductModalProps {
@@ -41,8 +210,10 @@ interface GroceryAddProductModalProps {
 
 export function GroceryAddProductModal({ categories, onClose }: GroceryAddProductModalProps) {
   const addProduct = useMutation(api.grocery.addGroceryProduct);
+  // mutation to cache barcode lookups so second scan of same barcode is instant
+  const cacheBarcodeProduct = useMutation(api.grocery.cacheBarcodeProduct);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormState>({
     name: "",
     category: categories[0] ?? "",
     customCategory: "",
@@ -55,7 +226,6 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
     stockQuantity: "",
     lowStockThreshold: "5",
     description: "",
-    // new fields from API
     brandName: "",
     manufacturer: "",
     ingredients: "",
@@ -70,66 +240,93 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isFetchingInfo, setIsFetchingInfo] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState("Fetching product details...");
+  const [dataSource, setDataSource] = useState<string | null>(null);
   const [showExtra, setShowExtra] = useState(false);
 
-  const set = (key: keyof typeof form, val: string | boolean) =>
+  const set = (key: keyof FormState, val: string | boolean) =>
     setForm((f) => ({ ...f, [key]: val }));
 
-  // ── Auto-Fill from Open Food Facts ───────────────────────────────
+  // ── Apply normalized product to form ──────────────────────────────
+  const applyProduct = (p: NormalizedProduct, barcode: string) => {
+    // Try to match API category to an existing local category
+    const matchedCategory =
+      categories.find(
+        (c) =>
+          c.toLowerCase() === p.category.toLowerCase() ||
+          p.category.toLowerCase().includes(c.toLowerCase())
+      ) ?? form.category;
+
+    setForm((prev) => ({
+      ...prev,
+      name: p.name || prev.name,
+      brandName: p.brandName || prev.brandName,
+      manufacturer: p.manufacturer || prev.manufacturer,
+      ingredients: p.ingredients || prev.ingredients,
+      countryOfOrigin: p.countryOfOrigin || prev.countryOfOrigin,
+      packagingType: p.packagingType || prev.packagingType,
+      image: p.image || prev.image,
+      unit: p.unit !== "piece" ? p.unit : prev.unit,
+      gstRate: String(p.gstRate),
+      category: matchedCategory,
+      description: p.description || prev.description,
+      isVegetarian: p.isVegetarian,
+      isVegan: p.isVegan,
+      isOrganic: p.isOrganic,
+      barcode,
+    }));
+
+    setShowExtra(true);
+  };
+
+  // ── Main barcode handler ──────────────────────────────────────────
   const handleBarcodeDetected = async (code: string) => {
     setIsScanning(false);
     set("barcode", code);
     setIsFetchingInfo(true);
+    setDataSource(null);
     toast.loading("Fetching product details...", { id: "fetch-product" });
 
-    try {
-      const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
-      const data = await res.json();
+    const result = await waterfallLookup(code, (msg) => {
+      setFetchProgress(msg);
+      toast.loading(msg, { id: "fetch-product" });
+    });
 
-      if (data.status === 1 && data.product) {
-        const p = data.product;
-        toast.success("Product found!", { id: "fetch-product" });
+    if (result) {
+      toast.success(`Found on ${result.source}!`, { id: "fetch-product" });
+      setDataSource(result.source);
+      applyProduct(result.product, code);
 
-        const detectedUnit = parseUnit(p.quantity || "") ?? form.unit;
-        const inferredGst = inferGstRate(p.categories_tags || []);
-        const labels: string[] = p.labels_tags || [];
-        const isVeg = labels.some((l: string) => l.includes("vegetarian"));
-        const isVegan = labels.some((l: string) => l.includes("vegan"));
-        const isOrganic = labels.some((l: string) => l.includes("organic"));
-
-        // Try to match category from API to local categories
-        const apiCategory = (p.categories || "").split(",")[0]?.trim() ?? "";
-        const matchedCategory = categories.find(
-          (c) => c.toLowerCase() === apiCategory.toLowerCase()
-        ) ?? form.category;
-
-        setForm((prev) => ({
-          ...prev,
-          name: p.product_name || p.product_name_en || prev.name,
-          brandName: p.brands?.split(",")[0]?.trim() || prev.brandName,
-          manufacturer: p.manufacturing_places || p.producer || prev.manufacturer,
-          ingredients: p.ingredients_text || prev.ingredients,
-          countryOfOrigin: p.countries?.split(",")[0]?.trim() || prev.countryOfOrigin,
-          packagingType: p.packaging?.split(",")[0]?.trim() || prev.packagingType,
-          image: p.image_front_url || prev.image,
-          unit: detectedUnit,
-          gstRate: String(inferredGst),
-          category: matchedCategory,
-          description: p.generic_name || prev.description,
-          isVegetarian: isVeg,
-          isVegan: isVegan,
-          isOrganic: isOrganic,
-        }));
-
-        setShowExtra(true); // expand extra fields so user can verify
-      } else {
-        toast.info("Barcode scanned. Product not in global database, please fill manually.", { id: "fetch-product" });
-      }
-    } catch {
-      toast.error("Failed to fetch product info.", { id: "fetch-product" });
-    } finally {
-      setIsFetchingInfo(false);
+      // ── Cache to Convex DB so repeat scans are instant ────────────
+      // (fire and forget — don't block UI)
+      cacheBarcodeProduct?.({
+        barcode: code,
+        source: result.source,
+        name: result.product.name,
+        brandName: result.product.brandName || undefined,
+        manufacturer: result.product.manufacturer || undefined,
+        ingredients: result.product.ingredients || undefined,
+        countryOfOrigin: result.product.countryOfOrigin || undefined,
+        packagingType: result.product.packagingType || undefined,
+        image: result.product.image || undefined,
+        unit: result.product.unit,
+        description: result.product.description || undefined,
+        isVegetarian: result.product.isVegetarian || undefined,
+        isVegan: result.product.isVegan || undefined,
+        isOrganic: result.product.isOrganic || undefined,
+        productType: result.product.productType,
+      }).catch(() => {
+        // silent — cache failure shouldn't affect UX
+      });
+    } else {
+      toast.info(
+        "Not found in any database. Please fill manually.",
+        { id: "fetch-product" }
+      );
     }
+
+    setIsFetchingInfo(false);
+    setFetchProgress("Fetching product details...");
   };
 
   const handleSubmit = async () => {
@@ -153,7 +350,6 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
         description: form.description.trim() || undefined,
         image: form.image.trim() || undefined,
         isActive: true,
-        // new fields
         brandName: form.brandName.trim() || undefined,
         manufacturer: form.manufacturer.trim() || undefined,
         ingredients: form.ingredients.trim() || undefined,
@@ -186,6 +382,7 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
         transition={{ type: "spring", damping: 30, stiffness: 320 }}
         className="relative bg-white w-full sm:rounded-3xl sm:max-w-lg sm:mx-4 rounded-t-3xl overflow-hidden flex flex-col max-h-[92dvh]"
       >
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-[#2D6A4F] rounded-xl flex items-center justify-center">
@@ -199,25 +396,65 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-hide relative">
+          {/* Fetching overlay */}
           {isFetchingInfo && (
-            <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center">
-              <Loader2 className="animate-spin text-[#2D6A4F] mb-2" size={32} />
-              <p className="text-sm font-bold text-gray-700">Loading Product Data...</p>
+            <div className="absolute inset-0 bg-white/70 backdrop-blur-[3px] z-10 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="animate-spin text-[#2D6A4F]" size={36} />
+              <p className="text-sm font-bold text-gray-700">{fetchProgress}</p>
+              <div className="flex gap-1.5">
+                {["Open Food Facts", "Open Beauty Facts", "Open Products Facts", "UPCitemdb"].map((src) => (
+                  <div
+                    key={src}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      fetchProgress.includes(src)
+                        ? "w-6 bg-[#2D6A4F]"
+                        : "w-1.5 bg-gray-200"
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-400 font-medium">Searching 4 databases…</p>
             </div>
           )}
 
-          {/* Image preview if autofilled */}
-          {form.image && (
+          {/* Product preview card (after autofill) */}
+          {form.image && !isFetchingInfo && (
             <div className="flex items-center gap-3 p-3 bg-[#F7F6F3] rounded-2xl border border-[#E8E5DF]">
-              <img src={form.image} alt="product" className="w-14 h-14 rounded-xl object-cover border border-gray-200" />
+              <img
+                src={form.image}
+                alt="product"
+                className="w-14 h-14 rounded-xl object-cover border border-gray-200 shrink-0"
+              />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-0.5">Auto-filled from barcode</p>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                    Auto-filled
+                  </p>
+                  {dataSource && (
+                    <span className="text-[9px] font-black bg-[#2D6A4F]/10 text-[#2D6A4F] px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                      {dataSource}
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm font-bold text-gray-700 truncate">{form.name}</p>
-                {form.brandName && <p className="text-xs text-gray-400">{form.brandName}</p>}
+                {form.brandName && (
+                  <p className="text-xs text-gray-400">{form.brandName}</p>
+                )}
               </div>
             </div>
           )}
 
+          {/* No image but data found */}
+          {!form.image && dataSource && !isFetchingInfo && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-[#2D6A4F]/8 rounded-xl border border-[#2D6A4F]/20">
+              <div className="w-2 h-2 rounded-full bg-[#2D6A4F] shrink-0" />
+              <p className="text-xs font-bold text-[#2D6A4F]">
+                Data auto-filled from {dataSource}
+              </p>
+            </div>
+          )}
+
+          {/* ── FORM FIELDS ── */}
           <Field label="Product Name *">
             <input
               autoFocus
@@ -237,11 +474,21 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
             </Field>
             {form.category === "__new__" ? (
               <Field label="New Category Name">
-                <input value={form.customCategory} onChange={(e) => set("customCategory", e.target.value)} placeholder="e.g. Pulses" className={INPUT} />
+                <input
+                  value={form.customCategory}
+                  onChange={(e) => set("customCategory", e.target.value)}
+                  placeholder="e.g. Pulses"
+                  className={INPUT}
+                />
               </Field>
             ) : (
               <Field label="Sub-Category">
-                <input value={form.subCategory} onChange={(e) => set("subCategory", e.target.value)} placeholder="e.g. Iodised" className={INPUT} />
+                <input
+                  value={form.subCategory}
+                  onChange={(e) => set("subCategory", e.target.value)}
+                  placeholder="e.g. Iodised"
+                  className={INPUT}
+                />
               </Field>
             )}
           </div>
@@ -272,10 +519,24 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
 
           <div className="grid grid-cols-2 gap-2">
             <Field label="Selling Price (₹) *">
-              <input type="number" min={0} value={form.sellingPrice} onChange={(e) => set("sellingPrice", e.target.value)} placeholder="0" className={INPUT} />
+              <input
+                type="number"
+                min={0}
+                value={form.sellingPrice}
+                onChange={(e) => set("sellingPrice", e.target.value)}
+                placeholder="0"
+                className={INPUT}
+              />
             </Field>
             <Field label="Cost Price (₹)">
-              <input type="number" min={0} value={form.costPrice} onChange={(e) => set("costPrice", e.target.value)} placeholder="0" className={INPUT} />
+              <input
+                type="number"
+                min={0}
+                value={form.costPrice}
+                onChange={(e) => set("costPrice", e.target.value)}
+                placeholder="0"
+                className={INPUT}
+              />
             </Field>
           </div>
 
@@ -300,10 +561,24 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
 
           <div className="grid grid-cols-2 gap-2">
             <Field label="Opening Stock *">
-              <input type="number" min={0} value={form.stockQuantity} onChange={(e) => set("stockQuantity", e.target.value)} placeholder="0" className={INPUT} />
+              <input
+                type="number"
+                min={0}
+                value={form.stockQuantity}
+                onChange={(e) => set("stockQuantity", e.target.value)}
+                placeholder="0"
+                className={INPUT}
+              />
             </Field>
             <Field label="Low Stock Alert">
-              <input type="number" min={0} value={form.lowStockThreshold} onChange={(e) => set("lowStockThreshold", e.target.value)} placeholder="5" className={INPUT} />
+              <input
+                type="number"
+                min={0}
+                value={form.lowStockThreshold}
+                onChange={(e) => set("lowStockThreshold", e.target.value)}
+                placeholder="5"
+                className={INPUT}
+              />
             </Field>
           </div>
 
@@ -317,7 +592,7 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
             />
           </Field>
 
-          {/* ── Extra Fields (auto-expanded after barcode scan) ── */}
+          {/* Toggle additional details */}
           <button
             type="button"
             onClick={() => setShowExtra((v) => !v)}
@@ -336,19 +611,39 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
               >
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="Brand Name">
-                    <input value={form.brandName} onChange={(e) => set("brandName", e.target.value)} placeholder="e.g. Amul" className={INPUT} />
+                    <input
+                      value={form.brandName}
+                      onChange={(e) => set("brandName", e.target.value)}
+                      placeholder="e.g. Amul"
+                      className={INPUT}
+                    />
                   </Field>
                   <Field label="Manufacturer">
-                    <input value={form.manufacturer} onChange={(e) => set("manufacturer", e.target.value)} placeholder="e.g. Gujarat Co-op" className={INPUT} />
+                    <input
+                      value={form.manufacturer}
+                      onChange={(e) => set("manufacturer", e.target.value)}
+                      placeholder="e.g. Gujarat Co-op"
+                      className={INPUT}
+                    />
                   </Field>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="Country of Origin">
-                    <input value={form.countryOfOrigin} onChange={(e) => set("countryOfOrigin", e.target.value)} placeholder="e.g. India" className={INPUT} />
+                    <input
+                      value={form.countryOfOrigin}
+                      onChange={(e) => set("countryOfOrigin", e.target.value)}
+                      placeholder="e.g. India"
+                      className={INPUT}
+                    />
                   </Field>
                   <Field label="Packaging Type">
-                    <input value={form.packagingType} onChange={(e) => set("packagingType", e.target.value)} placeholder="e.g. Packet" className={INPUT} />
+                    <input
+                      value={form.packagingType}
+                      onChange={(e) => set("packagingType", e.target.value)}
+                      placeholder="e.g. Packet"
+                      className={INPUT}
+                    />
                   </Field>
                 </div>
 
@@ -363,14 +658,23 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
                 </Field>
 
                 <Field label="Product Image URL">
-                  <input value={form.image} onChange={(e) => set("image", e.target.value)} placeholder="https://…" className={INPUT} />
+                  <input
+                    value={form.image}
+                    onChange={(e) => set("image", e.target.value)}
+                    placeholder="https://…"
+                    className={INPUT}
+                  />
                 </Field>
 
                 {/* Label Badges */}
                 <Field label="Product Labels">
                   <div className="flex gap-2 flex-wrap">
                     {(["isVegetarian", "isVegan", "isOrganic"] as const).map((key) => {
-                      const labels: Record<string, string> = { isVegetarian: "🟢 Vegetarian", isVegan: "🌿 Vegan", isOrganic: "🌾 Organic" };
+                      const labels: Record<string, string> = {
+                        isVegetarian: "🟢 Vegetarian",
+                        isVegan: "🌿 Vegan",
+                        isOrganic: "🌾 Organic",
+                      };
                       return (
                         <button
                           key={key}
@@ -395,6 +699,7 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
           <div className="h-20" />
         </div>
 
+        {/* Submit button */}
         <div className="absolute bottom-0 left-0 right-0 px-5 py-4 bg-white border-t border-gray-100">
           <button
             onClick={handleSubmit}
@@ -420,7 +725,8 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-const INPUT = "w-full h-9 px-3 bg-[#F7F6F3] border border-[#E8E5DF] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#2D6A4F]/20 focus:border-[#2D6A4F]/50 transition-all text-gray-900";
+const INPUT =
+  "w-full h-9 px-3 bg-[#F7F6F3] border border-[#E8E5DF] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#2D6A4F]/20 focus:border-[#2D6A4F]/50 transition-all text-gray-900";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -433,16 +739,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-// ── Fast ZXING Scanner ────────────────────────────────────────────
+// ── Barcode Scanner UI (with flashlight) ──────────────────────────
 
-// ── HYBRID SCANNER COMPONENT ─────────────────────────────────────────────
-
-// ── HYBRID SCANNER COMPONENT (WITH FLASHLIGHT) ───────────────────────────
-
-function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDetected: (code: string) => void }) {
+function BarcodeScannerUI({
+  onClose,
+  onDetected,
+}: {
+  onClose: () => void;
+  onDetected: (code: string) => void;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
-  
+
   const [hasTorch, setHasTorch] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
 
@@ -454,21 +762,23 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
     const startCamera = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
         });
-        
+
         if (!videoRef.current) return;
         videoRef.current.srcObject = stream;
 
-        // ── FLASHLIGHT CAPABILITY CHECK ──
         const track = stream.getVideoTracks()[0];
         trackRef.current = track;
-        
-        // Some older browsers don't support getCapabilities, so we use a safe check
-        const capabilities = track.getCapabilities ? (track.getCapabilities() as any) : {};
-        if (capabilities.torch) {
-          setHasTorch(true);
-        }
+
+        const capabilities = track.getCapabilities
+          ? (track.getCapabilities() as any)
+          : {};
+        if (capabilities.torch) setHasTorch(true);
 
         await new Promise((resolve) => {
           if (videoRef.current) {
@@ -476,11 +786,13 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
           }
         });
 
-        // ── PATH A: NATIVE ANDROID CHROME ──
-        if ('BarcodeDetector' in window) {
+        // Path A: Native BarcodeDetector (Android Chrome)
+        if ("BarcodeDetector" in window) {
           // @ts-ignore
-          const detector = new window.BarcodeDetector({ formats: ['ean_13', 'code_128', 'upc_a', 'ean_8'] });
-          
+          const detector = new window.BarcodeDetector({
+            formats: ["ean_13", "code_128", "upc_a", "ean_8"],
+          });
+
           scanInterval = setInterval(async () => {
             if (isProcessing || !videoRef.current) return;
             isProcessing = true;
@@ -490,20 +802,18 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
                 clearInterval(scanInterval);
                 onDetected(barcodes[0].rawValue);
               }
-            } catch (err) {} finally {
-              isProcessing = false;
-            }
-          }, 100); 
-        } 
-        
-        // ── PATH B: WEBASSEMBLY FALLBACK ──
+            } catch {}
+            finally { isProcessing = false; }
+          }, 100);
+        }
+        // Path B: WASM fallback (iOS Safari, desktop)
         else {
           const { readBarcodesFromImageData } = await import("zxing-wasm/reader");
-          
+
           scanInterval = setInterval(async () => {
             if (isProcessing || !videoRef.current || videoRef.current.readyState !== 4) return;
             isProcessing = true;
-            
+
             const canvas = document.createElement("canvas");
             canvas.width = videoRef.current.videoWidth;
             canvas.height = videoRef.current.videoHeight;
@@ -512,23 +822,21 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
             if (ctx) {
               ctx.drawImage(videoRef.current, 0, 0);
               const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              
               try {
                 const results = await readBarcodesFromImageData(imageData, {
                   formats: ["EAN13", "Code128", "EAN8", "UPCA"],
                   tryHarder: false,
                 });
-                if (results && results.length > 0) {
-                  clearInterval(scanInterval); 
+                if (results?.length > 0) {
+                  clearInterval(scanInterval);
                   onDetected(results[0].text);
                 }
-              } catch (err) {}
+              } catch {}
             }
             isProcessing = false;
           }, 150);
         }
-
-      } catch (err) {
+      } catch {
         toast.error("Camera access denied or unavailable.");
         onClose();
       }
@@ -538,76 +846,71 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
 
     return () => {
       clearInterval(scanInterval);
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
+      stream?.getTracks().forEach((t) => t.stop());
     };
   }, [onClose, onDetected]);
 
-  // ── FLASHLIGHT TOGGLE FUNCTION ──
   const toggleTorch = async () => {
-    if (trackRef.current) {
-      try {
-        const nextState = !isTorchOn;
-        await trackRef.current.applyConstraints({
-          // We use 'as any' here because standard TypeScript definitions 
-          // don't officially recognize the 'torch' property yet.
-          advanced: [{ torch: nextState } as any] 
-        });
-        setIsTorchOn(nextState);
-      } catch (error) {
-        toast.error("Could not toggle flashlight.");
-        console.error("Torch error:", error);
-      }
+    if (!trackRef.current) return;
+    try {
+      const next = !isTorchOn;
+      await trackRef.current.applyConstraints({
+        advanced: [{ torch: next } as any],
+      });
+      setIsTorchOn(next);
+    } catch {
+      toast.error("Could not toggle flashlight.");
     }
   };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       className="fixed inset-0 z-60 bg-black flex flex-col"
     >
-      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-linear-to-b from-black/80 to-transparent">
+      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
         <h3 className="text-white font-bold tracking-wide">Scan Product Barcode</h3>
-        
         <div className="flex items-center gap-3">
-          {/* Flashlight Button (Only shows if device supports it) */}
           {hasTorch && (
-            <button 
-              onClick={toggleTorch} 
+            <button
+              onClick={toggleTorch}
               className={`p-2 rounded-full backdrop-blur-sm transition-colors ${
-                isTorchOn ? "bg-yellow-400 text-black shadow-[0_0_15px_rgba(250,204,21,0.5)]" : "bg-white/20 text-white"
+                isTorchOn
+                  ? "bg-yellow-400 text-black shadow-[0_0_15px_rgba(250,204,21,0.5)]"
+                  : "bg-white/20 text-white"
               }`}
             >
               {isTorchOn ? <Flashlight size={20} /> : <FlashlightOff size={20} />}
             </button>
           )}
-
-          {/* Close Button */}
-          <button onClick={onClose} className="p-2 bg-white/20 rounded-full text-white backdrop-blur-sm hover:bg-white/30 transition-colors">
+          <button
+            onClick={onClose}
+            className="p-2 bg-white/20 rounded-full text-white backdrop-blur-sm hover:bg-white/30 transition-colors"
+          >
             <X size={20} />
           </button>
         </div>
       </div>
 
       <div className="flex-1 relative flex items-center justify-center overflow-hidden">
-        <video 
-          ref={videoRef} 
-          autoPlay 
-          playsInline 
-          muted 
-          className="absolute inset-0 w-full h-full object-cover" 
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="absolute inset-0 w-full h-full object-cover"
         />
-        
         <div className="relative w-64 h-40 border-2 border-[#2D6A4F] rounded-xl overflow-hidden shadow-[0_0_0_4000px_rgba(0,0,0,0.6)]">
-           <motion.div 
-             animate={{ top: ["0%", "100%", "0%"] }}
-             transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-             className="absolute left-0 right-0 h-0.5 bg-[#2D6A4F] shadow-[0_0_10px_#2D6A4F]"
-           />
+          <motion.div
+            animate={{ top: ["0%", "100%", "0%"] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+            className="absolute left-0 right-0 h-0.5 bg-[#2D6A4F] shadow-[0_0_10px_#2D6A4F]"
+          />
         </div>
       </div>
-      
+
       <div className="p-6 pb-10 bg-black text-center text-gray-400 text-sm">
         Align the barcode within the frame. Auto-detecting...
       </div>

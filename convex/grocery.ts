@@ -127,6 +127,35 @@ export const updateGroceryProduct = mutation({
   },
 });
 
+// convex/grocery.ts — add this mutation
+export const cacheBarcodeProduct = mutation({
+  args: {
+    barcode: v.string(),
+    source: v.string(),
+    name: v.string(),
+    brandName: v.optional(v.string()),
+    manufacturer: v.optional(v.string()),
+    ingredients: v.optional(v.string()),
+    countryOfOrigin: v.optional(v.string()),
+    packagingType: v.optional(v.string()),
+    image: v.optional(v.string()),
+    unit: v.string(),
+    description: v.optional(v.string()),
+    isVegetarian: v.optional(v.boolean()),
+    isVegan: v.optional(v.boolean()),
+    isOrganic: v.optional(v.boolean()),
+    productType: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("barcodeCache")
+      .withIndex("by_barcode", (q) => q.eq("barcode", args.barcode))
+      .first();
+    if (existing) return; // already cached
+    await ctx.db.insert("barcodeCache", { ...args, cachedAt: Date.now() });
+  },
+});
+
 export const adjustGroceryStock = mutation({
   args: {
     productId: v.id("groceryProducts"),

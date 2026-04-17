@@ -340,6 +340,26 @@ export default defineSchema({
     createdAt: v.string(),
   }),
 
+  // BARCODE PRODUCT CACHE (External lookups)
+  barcodeCache: defineTable({
+    barcode: v.string(),
+    source: v.string(),
+    name: v.string(),
+    brandName: v.optional(v.string()),
+    manufacturer: v.optional(v.string()),
+    ingredients: v.optional(v.string()),
+    countryOfOrigin: v.optional(v.string()),
+    packagingType: v.optional(v.string()),
+    image: v.optional(v.string()),
+    unit: v.string(),
+    description: v.optional(v.string()),
+    isVegetarian: v.optional(v.boolean()),
+    isVegan: v.optional(v.boolean()),
+    isOrganic: v.optional(v.boolean()),
+    productType: v.string(),
+    cachedAt: v.number(),
+  }).index("by_barcode", ["barcode"]),
+
   // ─────────────────────────────────────────────────────────────────
 
   // The actual food and beverage items
