@@ -4,7 +4,7 @@
 // GroceryCategoryRail.tsx
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { Search, X } from "lucide-react";
+import { Search, X, Scan } from "lucide-react";
 
 // Category emoji map — fallback to 🛒
 const CAT_EMOJI: Record<string, string> = {
@@ -31,6 +31,7 @@ interface GroceryCategoryRailProps {
   onSelect: (id: string) => void;
   search: string;
   onSearchChange: (s: string) => void;
+  onScanClick: () => void;
 }
 
 export function GroceryCategoryRail({
@@ -39,6 +40,7 @@ export function GroceryCategoryRail({
   onSelect,
   search,
   onSearchChange,
+  onScanClick,
 }: GroceryCategoryRailProps) {
   return (
     <div className="bg-white border-b border-[#E8E5DF] shrink-0">
@@ -53,16 +55,25 @@ export function GroceryCategoryRail({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search by name or scan barcode…"
-            className="w-full h-9 pl-9 pr-8 bg-[#F7F6F3] border border-[#E8E5DF] rounded-xl text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-[#2D6A4F]/20 focus:border-[#2D6A4F]/50 transition-all"
+            className="w-full h-9 pl-9 pr-20 bg-[#F7F6F3] border border-[#E8E5DF] rounded-xl text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-[#2D6A4F]/20 focus:border-[#2D6A4F]/50 transition-all"
           />
-          {search && (
+          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            {search && (
+              <button
+                onClick={() => onSearchChange("")}
+                className="p-1.5 text-gray-400 hover:text-gray-700 transition-colors"
+              >
+                <X size={13} />
+              </button>
+            )}
             <button
-              onClick={() => onSearchChange("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors"
+              onClick={onScanClick}
+              className="p-1.5 bg-[#2D6A4F] text-white rounded-lg hover:bg-[#1B4332] transition-colors shadow-sm"
+              title="Scan Barcode"
             >
-              <X size={13} />
+              <Scan size={13} />
             </button>
-          )}
+          </div>
         </div>
       </div>
 

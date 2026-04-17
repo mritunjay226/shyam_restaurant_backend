@@ -235,12 +235,6 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
               <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">{selectedCounter.name}</span>
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
            </div>
-           <button 
-             onClick={() => setShowScanner(true)}
-             className="w-10 h-10 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-emerald-700 transition-all active:scale-90"
-           >
-             <Scan size={20} />
-           </button>
         </div>
       )}
 
@@ -281,6 +275,7 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
               onSelect={setActiveCategory}
               search={search}
               onSearchChange={setSearch}
+              onScanClick={() => setShowScanner(true)}
             />
             <GroceryProductGrid
               products={filteredProducts}
