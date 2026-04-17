@@ -54,7 +54,8 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
     room?._id ? { roomId: room._id as any } : "skip"
   ) || [];
 
-  // Compute disabled dates
+  const disabledDates = useMemo(() => {
+    const dates: any[] = [{ before: startOfDay(new Date()) }];
     const now = Date.now();
     const thirtyMinsAgo = now - (30 * 60 * 1000);
 
