@@ -399,4 +399,27 @@ export default defineSchema({
     .index("by_category", ["categoryId"])
     // Index to filter items by dietary preference
     .index("by_dietary", ["dietaryType"]),
+
+  // ─────────────────────────────────────────────────────────────────
+  // POS TERMINALS & SHARED CARTS
+  // ─────────────────────────────────────────────────────────────────
+  
+  storeCounters: defineTable({
+    name: v.string(),
+    isActive: v.boolean(),
+  }),
+
+  activeGroceryCarts: defineTable({
+    counterId: v.id("storeCounters"),
+    items: v.array(v.object({
+      cartId: v.string(),
+      productId: v.id("groceryProducts"),
+      quantity: v.number(),
+      // Snapshots for quick display
+      name: v.string(),
+      price: v.number(),
+      unit: v.string(),
+    })),
+    lastUpdated: v.number(),
+  }).index("by_counter", ["counterId"]),
 });

@@ -481,3 +481,200 @@ export const getGroceryMonthlyReport = query({
     };
   },
 });
+
+// ─────────────────────────────────────────────────────────────────
+// POS TERMINAL COUNTERS
+// ─────────────────────────────────────────────────────────────────
+
+export const listCounters = query({
+  handler: async (ctx) => ctx.db.query("storeCounters").collect(),
+});
+
+export const addCounter = mutation({
+  args: { name: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("storeCounters", {
+      name: args.name,
+      isActive: true,
+    });
+  },
+});
+
+export const toggleCounter = mutation({
+  args: { counterId: v.id("storeCounters"), isActive: v.boolean() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.counterId, { isActive: args.isActive });
+  },
+});
+
+export const removeCounter = mutation({
+  args: { counterId: v.id("storeCounters") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.counterId);
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────
+// SHARED ACTIVE CARTS (Sync between devices)
+// ─────────────────────────────────────────────────────────────────
+
+export const getActiveCart = query({
+  args: { counterId: v.id("storeCounters") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("activeGroceryCarts")
+      .withIndex("by_counter", (q) => q.eq("counterId", args.counterId))
+      .first();
+  },
+});
+
+export const syncCartItemByBarcode = mutation({
+  args: { counterId: v.id("storeCounters"), barcode: v.string() },
+  handler: async (ctx, args) => {
+    const product = await ctx.db
+      .query("groceryProducts")
+      .withIndex("by_barcode", (q) => q.eq("barcode", args.barcode))
+      .filter((q) => q.eq(q.field("isActive"), true))
+      .first();
+
+    if (!product) throw new Error("Product not found in database.");
+
+    let cart = await ctx.db
+      .query("activeGroceryCarts")
+      .withIndex("by_counter", (q) => q.eq("counterId", args.counterId))
+      .first();
+
+    if (!cart) {
+      await ctx.db.insert("activeGroceryCarts", {
+        counterId: args.counterId,
+        items: [{
+          cartId: Math.random().toString(36).slice(2),
+          productId: product._id,
+          name: product.name,
+          price: product.sellingPrice,
+          unit: product.unit,
+          quantity: 1,
+        }],
+        lastUpdated: Date.now(),
+      });
+    } else {
+      const existingIdx = cart.items.findIndex(i => i.productId === product._id);
+      let newItems = [...cart.items];
+
+      if (existingIdx > -1) {
+        newItems[existingIdx] = {
+          ...newItems[existingIdx],
+          quantity: newItems[existingIdx].quantity + 1,
+        };
+      } else {
+        newItems.push({
+          cartId: Math.random().toString(36).slice(2),
+          productId: product._id,
+          name: product.name,
+          price: product.sellingPrice,
+          unit: product.unit,
+          quantity: 1,
+        });
+      }
+
+      await ctx.db.patch(cart._id, {
+        items: newItems,
+        lastUpdated: Date.now(),
+      });
+    }
+
+    return { success: true, productName: product.name };
+  },
+});
+
+export const updateActiveCartQty = mutation({
+  args: { 
+    counterId: v.id("storeCounters"), 
+    productId: v.id("groceryProducts"),
+    quantity: v.number() 
+  },
+  handler: async (ctx, args) => {
+    const cart = await ctx.db
+      .query("activeGroceryCarts")
+      .withIndex("by_counter", (q) => q.eq("counterId", args.counterId))
+      .first();
+
+    if (!cart) return;
+
+    let newItems = [...cart.items];
+    const idx = newItems.findIndex(i => i.productId === args.productId);
+    
+    if (idx > -1) {
+      if (args.quantity <= 0) {
+        newItems.splice(idx, 1);
+      } else {
+        newItems[idx].quantity = args.quantity;
+      }
+      await ctx.db.patch(cart._id, { items: newItems, lastUpdated: Date.now() });
+    }
+  },
+});
+
+export const addProductToActiveCart = mutation({
+  args: { 
+    counterId: v.id("storeCounters"), 
+    productId: v.id("groceryProducts") 
+  },
+  handler: async (ctx, args) => {
+    const product = await ctx.db.get(args.productId);
+    if (!product) throw new Error("Product not found");
+
+    const cart = await ctx.db
+      .query("activeGroceryCarts")
+      .withIndex("by_counter", (q) => q.eq("counterId", args.counterId))
+      .first();
+
+    if (!cart) {
+      await ctx.db.insert("activeGroceryCarts", {
+        counterId: args.counterId,
+        items: [{
+          cartId: Math.random().toString(36).slice(2),
+          productId: product._id,
+          name: product.name,
+          price: product.sellingPrice,
+          unit: product.unit,
+          quantity: 1,
+        }],
+        lastUpdated: Date.now(),
+      });
+    } else {
+      const existingIdx = cart.items.findIndex(i => i.productId === product._id);
+      let newItems = [...cart.items];
+
+      if (existingIdx > -1) {
+        newItems[existingIdx] = {
+          ...newItems[existingIdx],
+          quantity: newItems[existingIdx].quantity + 1,
+        };
+      } else {
+        newItems.push({
+          cartId: Math.random().toString(36).slice(2),
+          productId: product._id,
+          name: product.name,
+          price: product.sellingPrice,
+          unit: product.unit,
+          quantity: 1,
+        });
+      }
+      await ctx.db.patch(cart._id, { items: newItems, lastUpdated: Date.now() });
+    }
+  },
+});
+
+export const clearActiveCart = mutation({
+  args: { counterId: v.id("storeCounters") },
+  handler: async (ctx, args) => {
+    const cart = await ctx.db
+      .query("activeGroceryCarts")
+      .withIndex("by_counter", (q) => q.eq("counterId", args.counterId))
+      .first();
+    if (cart) {
+      await ctx.db.patch(cart._id, { items: [], lastUpdated: Date.now() });
+    }
+  },
+});

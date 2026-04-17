@@ -5,11 +5,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { toast } from "sonner";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { Scan, Terminal } from "lucide-react";
 
 import { GroceryTopbar } from "./GroceryTopbar";
 import { GroceryCategoryRail } from "./GroceryCategoryRail";
@@ -19,6 +20,8 @@ import { GroceryCheckoutDrawer } from "./GroceryCheckoutDrawer";
 import { GrocerySalesPanel } from "./GrocerySalesPanel";
 import { GroceryInventoryPanel } from "./GroceryInventoryPanel";
 import { GroceryAddProductModal } from "./GroceryAddProductModal";
+import { CounterSelector } from "./CounterSelector";
+import { BarcodeScannerUI } from "./BarcodeScannerUI";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -59,76 +62,117 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
   // ── View state
   const [activeView, setActiveView] = useState<ActiveView>("pos");
 
+  // ── Terminal / Counter State
+  const [selectedCounter, setSelectedCounter] = useState<{ id: Id<"storeCounters">; name: string } | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+
   // ── POS state
   const [activeCategory, setActiveCategory] = useState<string>(categories[0]?.id ?? "");
   const [search, setSearch] = useState("");
-  const [cart, setCart] = useState<CartItem[]>([]);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
 
+  // ── Database Cart Sync 
+  const dbCart = useQuery(api.grocery.getActiveCart, selectedCounter ? { counterId: selectedCounter.id } : "skip");
+  
+  // Transform DB items into CartItem format
+  const cart: CartItem[] = (dbCart?.items || []).map(item => {
+    const product = products.find(p => p._id === item.productId);
+    return {
+      cartId: item.cartId,
+      product: product || {
+        _id: item.productId,
+        name: item.name,
+        sellingPrice: item.price,
+        unit: item.unit,
+        isActive: true,
+        category: "Unknown",
+        stockQuantity: 999,
+        lowStockThreshold: 1,
+      } as any,
+      quantity: item.quantity
+    };
+  });
+
   // ── Mutations
   const createSale = useMutation(api.grocery.createGrocerySale);
+  const addByBarcode = useMutation(api.grocery.syncCartItemByBarcode);
+  const updateDbCartQty = useMutation(api.grocery.updateActiveCartQty);
+  const addToDbCart = useMutation(api.grocery.addProductToActiveCart);
+  const clearDbCart = useMutation(api.grocery.clearActiveCart);
 
   // ── Cart helpers ───────────────────────────────────────────────────────────
 
-  const addToCart = useCallback((product: GroceryProduct) => {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product._id === product._id);
-      if (existing) {
-        if (existing.quantity >= product.stockQuantity) {
-          toast.error(`Only ${product.stockQuantity} ${product.unit} in stock`);
-          return prev;
-        }
-        return prev.map((i) =>
-          i.product._id === product._id ? { ...i, quantity: i.quantity + 1 } : i
-        );
-      }
-      if (product.stockQuantity === 0) {
-        toast.error("Out of stock");
-        return prev;
-      }
-      return [
-        ...prev,
-        {
-          cartId: Math.random().toString(36).slice(2),
-          product,
-          quantity: 1,
-        },
-      ];
-    });
-  }, []);
-
-  const removeFromCart = useCallback((cartId: string) => {
-    setCart((prev) => {
-      const item = prev.find((i) => i.cartId === cartId);
-      if (!item) return prev;
-      if (item.quantity > 1) {
-        return prev.map((i) =>
-          i.cartId === cartId ? { ...i, quantity: i.quantity - 1 } : i
-        );
-      }
-      return prev.filter((i) => i.cartId !== cartId);
-    });
-  }, []);
-
-  const setCartItemQty = useCallback((cartId: string, qty: number) => {
-    if (qty <= 0) {
-      setCart((prev) => prev.filter((i) => i.cartId !== cartId));
+  const addToCart = useCallback(async (product: GroceryProduct) => {
+    if (!selectedCounter) return;
+    if (product.stockQuantity === 0) {
+      toast.error("Out of stock");
       return;
     }
-    setCart((prev) =>
-      prev.map((i) => {
-        if (i.cartId !== cartId) return i;
-        if (qty > i.product.stockQuantity) {
-          toast.error(`Max stock: ${i.product.stockQuantity} ${i.product.unit}`);
-          return i;
-        }
-        return { ...i, quantity: qty };
-      })
-    );
-  }, []);
+    const existing = cart.find((i) => i.product._id === product._id);
+    if (existing && existing.quantity >= product.stockQuantity) {
+      toast.error(`Max stock: ${product.stockQuantity}`);
+      return;
+    }
 
-  const clearCart = useCallback(() => setCart([]), []);
+    try {
+      await addToDbCart({ counterId: selectedCounter.id, productId: product._id });
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  }, [selectedCounter, cart, addToDbCart]);
+
+  const removeFromCart = useCallback(async (cartId: string) => {
+    if (!selectedCounter) return;
+    const item = cart.find(i => i.cartId === cartId);
+    if (!item) return;
+    try {
+      await updateDbCartQty({ 
+        counterId: selectedCounter.id, 
+        productId: item.product._id, 
+        quantity: item.quantity - 1 
+      });
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  }, [selectedCounter, cart, updateDbCartQty]);
+
+  const setCartItemQty = useCallback(async (cartId: string, qty: number) => {
+    if (!selectedCounter) return;
+    const item = cart.find(i => i.cartId === cartId);
+    if (!item) return;
+
+    if (qty > item.product.stockQuantity) {
+      toast.error(`Max stock: ${item.product.stockQuantity}`);
+      return;
+    }
+
+    try {
+      await updateDbCartQty({ 
+        counterId: selectedCounter.id, 
+        productId: item.product._id, 
+        quantity: qty 
+      });
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  }, [selectedCounter, cart, updateDbCartQty]);
+
+  const clearCart = useCallback(async () => {
+    if (!selectedCounter) return;
+    await clearDbCart({ counterId: selectedCounter.id });
+  }, [selectedCounter, clearDbCart]);
+
+  const handleBarcodeDetected = async (code: string) => {
+    if (!selectedCounter) return;
+    try {
+      const result = await addByBarcode({ counterId: selectedCounter.id, barcode: code });
+      toast.success(`Scanned: ${result.productName}`);
+      // Don't close scanner automatically, allow multiple scans
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
 
   // ── Totals ─────────────────────────────────────────────────────────────────
 
@@ -159,7 +203,7 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
           })),
         });
         toast.success(`✅ Sale ${result.receiptNumber} · ₹${result.totalAmount.toLocaleString()}`);
-        clearCart();
+        await clearCart();
         setIsCheckoutOpen(false);
       } catch (e: any) {
         toast.error(e.message || "Sale failed");
@@ -180,6 +224,34 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
 
   return (
     <div className="flex flex-col h-screen w-full bg-[#F7F6F3] font-['DM_Sans',sans-serif] overflow-hidden">
+      {!selectedCounter && (
+        <CounterSelector onSelect={(id, name) => setSelectedCounter({ id, name })} />
+      )}
+
+      {selectedCounter && (
+        <div className="absolute top-2 right-4 z-50 flex items-center gap-2">
+           <div className="bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-gray-200 flex items-center gap-2 shadow-sm">
+              <Terminal size={14} className="text-emerald-600" />
+              <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">{selectedCounter.name}</span>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+           </div>
+           <button 
+             onClick={() => setShowScanner(true)}
+             className="w-10 h-10 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-emerald-700 transition-all active:scale-90"
+           >
+             <Scan size={20} />
+           </button>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {showScanner && (
+          <BarcodeScannerUI 
+            onClose={() => setShowScanner(false)} 
+            onDetected={handleBarcodeDetected} 
+          />
+        )}
+      </AnimatePresence>
       {/* Google font import via style tag */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap');

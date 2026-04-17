@@ -16,6 +16,7 @@ import { BanquetsTab } from "./_components/banquetTab";
 import { MenuTab } from "./_components/menuTab";
 import { StaffTab } from "./_components/staffTab";
 import { PermissionsTab } from "./_components/permissionsTab";
+import { CountersTab } from "./_components/countersTab";
 import { BASE_ROLES } from "./constants/constant";
 
 // ─── Tabs config ────────────────────────────────────────────────────────────
@@ -26,6 +27,7 @@ const TABS = [
   { id: "rooms",       label: "Rooms" },
   { id: "banquets",    label: "Banquets" },
   { id: "menu",        label: "F&B Menu" },
+  { id: "counters",    label: "Store Counters" },
 ];
 
 const DEFAULT_FORM: GeneralFormData = {
@@ -239,6 +241,7 @@ export default function SettingsPage() {
               onSavePermissions={handleSavePermissions}
             />
           )}
+          {activeTab === "counters" && <CountersTab />}
         </div>
       </div>
     </div>
