@@ -435,72 +435,96 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ── Fast ZXING Scanner ────────────────────────────────────────────
 
-function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void; onDetected: (code: string) => void }) {
+// ── HYBRID SCANNER COMPONENT ─────────────────────────────────────────────
+
+function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDetected: (code: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
-    let animFrameId: number;
+    let scanInterval: NodeJS.Timeout;
     let isProcessing = false;
-    let detected = false;
 
     const startCamera = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
         });
-        if (videoRef.current) videoRef.current.srcObject = stream;
+        
+        if (!videoRef.current) return;
+        videoRef.current.srcObject = stream;
 
-        const scan = async () => {
-          if (detected) return;
-          const video = videoRef.current;
-          const canvas = canvasRef.current;
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = () => resolve(true);
+          }
+        });
 
-          if (video && canvas && video.readyState === 4 && !isProcessing) {
+        // ─────────────────────────────────────────────────────────────────
+        // PATH A: THE NATIVE ANDROID CHROME PATH (Ultra Fast)
+        // ─────────────────────────────────────────────────────────────────
+        if ('BarcodeDetector' in window) {
+          // @ts-ignore - TypeScript doesn't natively know about BarcodeDetector yet
+          const detector = new window.BarcodeDetector({ formats: ['ean_13', 'code_128', 'upc_a', 'ean_8'] });
+          
+          scanInterval = setInterval(async () => {
+            if (isProcessing || !videoRef.current) return;
             isProcessing = true;
-            const scale = Math.min(1, 640 / video.videoWidth);
-            canvas.width = video.videoWidth * scale;
-            canvas.height = video.videoHeight * scale;
-
-            const ctx = canvas.getContext("2d", { willReadFrequently: true });
-            if (ctx) {
-              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-              canvas.toBlob(
-                async (blob) => {
-                  if (blob && !detected) {
-                    try {
-                      const file = new File([blob], "f.jpg", { type: "image/jpeg" });
-                      const results = await readBarcodesFromImageFile(file, {
-                        formats: ["EAN13", "Code128", "EAN8", "UPCA"],
-                        tryHarder: false,
-                        tryInvert: false,
-                      });
-                      if (results?.length > 0 && !detected) {
-                        detected = true;
-                        onDetected(results[0].text);
-                        return;
-                      }
-                    } catch {
-                      // no barcode in frame, continue
-                    }
-                  }
-                  isProcessing = false;
-                },
-                "image/jpeg",
-                0.5
-              );
-            } else {
+            try {
+              // Native detector reads DIRECTLY from the <video> tag. No canvas needed!
+              const barcodes = await detector.detect(videoRef.current);
+              if (barcodes.length > 0) {
+                clearInterval(scanInterval);
+                onDetected(barcodes[0].rawValue);
+              }
+            } catch (err) {
+              // Ignore frame errors
+            } finally {
               isProcessing = false;
             }
-          }
-          animFrameId = requestAnimationFrame(scan);
-        };
+          }, 100); // 10 scans a second, zero lag
+        } 
+        
+        // ─────────────────────────────────────────────────────────────────
+        // PATH B: THE WEBASSEMBLY FALLBACK (For iOS Safari & Desktop)
+        // ─────────────────────────────────────────────────────────────────
+        else {
+          const { readBarcodesFromImageData } = await import("zxing-wasm/reader");
+          
+          scanInterval = setInterval(async () => {
+            if (isProcessing || !videoRef.current || videoRef.current.readyState !== 4) return;
+            isProcessing = true;
+            
+            const canvas = document.createElement("canvas");
+            canvas.width = videoRef.current.videoWidth;
+            canvas.height = videoRef.current.videoHeight;
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-        videoRef.current?.addEventListener("playing", () => {
-          animFrameId = requestAnimationFrame(scan);
-        });
-      } catch {
+            if (ctx) {
+              // Draw video frame to canvas
+              ctx.drawImage(videoRef.current, 0, 0);
+              // Extract RAW pixels (No JPEG encoding bottleneck!)
+              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              
+              try {
+                const results = await readBarcodesFromImageData(imageData, {
+                  formats: ["EAN13", "Code128", "EAN8", "UPCA"],
+                  tryHarder: false,
+                });
+                if (results && results.length > 0) {
+                  clearInterval(scanInterval); 
+                  onDetected(results[0].text);
+                }
+              } catch (err) {
+                // Ignore no-barcode-found errors
+              }
+            }
+            isProcessing = false;
+          }, 150);
+        }
+
+      } catch (err) {
         toast.error("Camera access denied or unavailable.");
         onClose();
       }
@@ -509,18 +533,19 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void; onDete
     startCamera();
 
     return () => {
-      detected = true;
-      cancelAnimationFrame(animFrameId);
-      stream?.getTracks().forEach((t) => t.stop());
+      clearInterval(scanInterval);
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
     };
   }, [onClose, onDetected]);
 
   return (
-    <motion.div
+    <motion.div 
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-60 bg-black flex flex-col"
     >
-      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
+      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-linear-to-b from-black/80 to-transparent">
         <h3 className="text-white font-bold tracking-wide">Scan Product Barcode</h3>
         <button onClick={onClose} className="p-2 bg-white/20 rounded-full text-white backdrop-blur-sm">
           <X size={20} />
@@ -528,19 +553,25 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void; onDete
       </div>
 
       <div className="flex-1 relative flex items-center justify-center overflow-hidden">
-        <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
-        <canvas ref={canvasRef} className="hidden" />
+        <video 
+          ref={videoRef} 
+          autoPlay 
+          playsInline 
+          muted 
+          className="absolute inset-0 w-full h-full object-cover" 
+        />
+        
         <div className="relative w-64 h-40 border-2 border-[#2D6A4F] rounded-xl overflow-hidden shadow-[0_0_0_4000px_rgba(0,0,0,0.6)]">
-          <motion.div
-            animate={{ top: ["0%", "100%", "0%"] }}
-            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-            className="absolute left-0 right-0 h-0.5 bg-[#2D6A4F] shadow-[0_0_10px_#2D6A4F]"
-          />
+           <motion.div 
+             animate={{ top: ["0%", "100%", "0%"] }}
+             transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+             className="absolute left-0 right-0 h-0.5 bg-[#2D6A4F] shadow-[0_0_10px_#2D6A4F]"
+           />
         </div>
       </div>
-
+      
       <div className="p-6 pb-10 bg-black text-center text-gray-400 text-sm">
-        Align the barcode within the frame to automatically scan and fetch product details.
+        Align the barcode within the frame. Auto-detecting...
       </div>
     </motion.div>
   );
