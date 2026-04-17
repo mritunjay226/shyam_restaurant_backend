@@ -163,10 +163,31 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
     await clearDbCart({ counterId: selectedCounter.id });
   }, [selectedCounter, clearDbCart]);
 
+  const playBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); // Frequency in hertz
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Volume
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.1); // Short beep
+    } catch (e) {
+      console.error("Audio beep failed", e);
+    }
+  };
+
   const handleBarcodeDetected = async (code: string) => {
     if (!selectedCounter) return;
     try {
       const result = await addByBarcode({ counterId: selectedCounter.id, barcode: code });
+      playBeep();
       toast.success(`Scanned: ${result.productName}`);
       // Don't close scanner automatically, allow multiple scans
     } catch (e: any) {
