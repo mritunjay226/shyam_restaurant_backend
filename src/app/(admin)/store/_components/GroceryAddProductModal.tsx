@@ -474,7 +474,7 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void; onDete
                       const results = await readBarcodesFromImageFile(file, {
                         formats: ["EAN13", "Code128", "EAN8", "UPCA"],
                         tryHarder: false,
-                        tryInverted: false,
+                        tryInvert: false,
                       });
                       if (results?.length > 0 && !detected) {
                         detected = true;
