@@ -55,11 +55,14 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   ) || [];
 
   // Compute disabled dates
-  const disabledDates = useMemo(() => {
-    const dates: any[] = [{ before: startOfDay(new Date()) }];
-    
+    const now = Date.now();
+    const thirtyMinsAgo = now - (30 * 60 * 1000);
+
     roomBookings.forEach(b => {
-      if (b.status !== 'cancelled' && b.status !== 'checked_out') {
+      const isPending = b.status === 'pending';
+      const isStale = isPending && b._creationTime < thirtyMinsAgo;
+
+      if (b.status !== 'cancelled' && b.status !== 'checked_out' && !isStale) {
         try {
           const start = parseISO(b.checkIn);
           const end = parseISO(b.checkOut);

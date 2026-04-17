@@ -281,14 +281,21 @@ export const createPendingBooking = mutation({
     source: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // 1. Availability check
+    const now = Date.now();
+    const thirtyMinsAgo = now - (30 * 60 * 1000);
+
     const activeBookings = await ctx.db
       .query("bookings")
       .withIndex("by_room", (q) => q.eq("roomId", args.roomId))
       .filter((q) =>
         q.and(
           q.neq(q.field("status"), "cancelled"),
-          q.neq(q.field("status"), "checked_out")
+          q.neq(q.field("status"), "checked_out"),
+          // Only count pending if they are recent
+          q.or(
+            q.neq(q.field("status"), "pending"),
+            q.gt(q.field("_creationTime"), thirtyMinsAgo)
+          )
         )
       )
       .collect();
