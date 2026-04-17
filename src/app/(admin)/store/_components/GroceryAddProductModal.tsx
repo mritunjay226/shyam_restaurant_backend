@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Package, ScanLine, Loader2 } from "lucide-react";
+import { X, Package, ScanLine, Loader2, Flashlight, FlashlightOff } from "lucide-react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { toast } from "sonner";
@@ -437,8 +437,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ── HYBRID SCANNER COMPONENT ─────────────────────────────────────────────
 
+// ── HYBRID SCANNER COMPONENT (WITH FLASHLIGHT) ───────────────────────────
+
 function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDetected: (code: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const trackRef = useRef<MediaStreamTrack | null>(null);
+  
+  const [hasTorch, setHasTorch] = useState(false);
+  const [isTorchOn, setIsTorchOn] = useState(false);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -448,47 +454,49 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
     const startCamera = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
         });
         
         if (!videoRef.current) return;
         videoRef.current.srcObject = stream;
 
-        // Wait for video to be ready
+        // ── FLASHLIGHT CAPABILITY CHECK ──
+        const track = stream.getVideoTracks()[0];
+        trackRef.current = track;
+        
+        // Some older browsers don't support getCapabilities, so we use a safe check
+        const capabilities = track.getCapabilities ? (track.getCapabilities() as any) : {};
+        if (capabilities.torch) {
+          setHasTorch(true);
+        }
+
         await new Promise((resolve) => {
           if (videoRef.current) {
             videoRef.current.onloadedmetadata = () => resolve(true);
           }
         });
 
-        // ─────────────────────────────────────────────────────────────────
-        // PATH A: THE NATIVE ANDROID CHROME PATH (Ultra Fast)
-        // ─────────────────────────────────────────────────────────────────
+        // ── PATH A: NATIVE ANDROID CHROME ──
         if ('BarcodeDetector' in window) {
-          // @ts-ignore - TypeScript doesn't natively know about BarcodeDetector yet
+          // @ts-ignore
           const detector = new window.BarcodeDetector({ formats: ['ean_13', 'code_128', 'upc_a', 'ean_8'] });
           
           scanInterval = setInterval(async () => {
             if (isProcessing || !videoRef.current) return;
             isProcessing = true;
             try {
-              // Native detector reads DIRECTLY from the <video> tag. No canvas needed!
               const barcodes = await detector.detect(videoRef.current);
               if (barcodes.length > 0) {
                 clearInterval(scanInterval);
                 onDetected(barcodes[0].rawValue);
               }
-            } catch (err) {
-              // Ignore frame errors
-            } finally {
+            } catch (err) {} finally {
               isProcessing = false;
             }
-          }, 100); // 10 scans a second, zero lag
+          }, 100); 
         } 
         
-        // ─────────────────────────────────────────────────────────────────
-        // PATH B: THE WEBASSEMBLY FALLBACK (For iOS Safari & Desktop)
-        // ─────────────────────────────────────────────────────────────────
+        // ── PATH B: WEBASSEMBLY FALLBACK ──
         else {
           const { readBarcodesFromImageData } = await import("zxing-wasm/reader");
           
@@ -502,9 +510,7 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
             const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
             if (ctx) {
-              // Draw video frame to canvas
               ctx.drawImage(videoRef.current, 0, 0);
-              // Extract RAW pixels (No JPEG encoding bottleneck!)
               const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
               
               try {
@@ -516,9 +522,7 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
                   clearInterval(scanInterval); 
                   onDetected(results[0].text);
                 }
-              } catch (err) {
-                // Ignore no-barcode-found errors
-              }
+              } catch (err) {}
             }
             isProcessing = false;
           }, 150);
@@ -540,6 +544,24 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
     };
   }, [onClose, onDetected]);
 
+  // ── FLASHLIGHT TOGGLE FUNCTION ──
+  const toggleTorch = async () => {
+    if (trackRef.current) {
+      try {
+        const nextState = !isTorchOn;
+        await trackRef.current.applyConstraints({
+          // We use 'as any' here because standard TypeScript definitions 
+          // don't officially recognize the 'torch' property yet.
+          advanced: [{ torch: nextState } as any] 
+        });
+        setIsTorchOn(nextState);
+      } catch (error) {
+        toast.error("Could not toggle flashlight.");
+        console.error("Torch error:", error);
+      }
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -547,9 +569,25 @@ function BarcodeScannerUI({ onClose, onDetected }: { onClose: () => void, onDete
     >
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-linear-to-b from-black/80 to-transparent">
         <h3 className="text-white font-bold tracking-wide">Scan Product Barcode</h3>
-        <button onClick={onClose} className="p-2 bg-white/20 rounded-full text-white backdrop-blur-sm">
-          <X size={20} />
-        </button>
+        
+        <div className="flex items-center gap-3">
+          {/* Flashlight Button (Only shows if device supports it) */}
+          {hasTorch && (
+            <button 
+              onClick={toggleTorch} 
+              className={`p-2 rounded-full backdrop-blur-sm transition-colors ${
+                isTorchOn ? "bg-yellow-400 text-black shadow-[0_0_15px_rgba(250,204,21,0.5)]" : "bg-white/20 text-white"
+              }`}
+            >
+              {isTorchOn ? <Flashlight size={20} /> : <FlashlightOff size={20} />}
+            </button>
+          )}
+
+          {/* Close Button */}
+          <button onClick={onClose} className="p-2 bg-white/20 rounded-full text-white backdrop-blur-sm hover:bg-white/30 transition-colors">
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 relative flex items-center justify-center overflow-hidden">
