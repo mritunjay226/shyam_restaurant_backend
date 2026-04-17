@@ -173,7 +173,7 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pb-14">
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
