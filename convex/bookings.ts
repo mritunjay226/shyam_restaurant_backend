@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { api } from "./_generated/api";
 
 // ─────────────────────────────────────────────────────────────────
 // FOLIO NUMBER HELPER
@@ -363,6 +364,15 @@ export const confirmPayment = mutation({
       folioNumber,
     });
 
+    // Schedule WhatsApp confirmation
+    await ctx.scheduler.runAfter(0, api.notifications.sendWhatsAppBookingConfirmation, {
+      phone: booking.guestPhone,
+      guestName: booking.guestName,
+      checkIn: booking.checkIn,
+      trackingCode: booking.trackingCode || "",
+      hotelName: "Sarovar Palace",
+    });
+
     // Record in bills
     await ctx.db.insert("bills", {
       billType: "room",
@@ -422,6 +432,15 @@ export const confirmPaymentByOrderId = mutation({
       paymentStatus: "paid",
       paymentId: args.paymentId,
       folioNumber,
+    });
+
+    // Schedule WhatsApp confirmation
+    await ctx.scheduler.runAfter(0, api.notifications.sendWhatsAppBookingConfirmation, {
+      phone: booking.guestPhone,
+      guestName: booking.guestName,
+      checkIn: booking.checkIn,
+      trackingCode: booking.trackingCode || "",
+      hotelName: "Sarovar Palace",
     });
 
     await ctx.db.insert("bills", {

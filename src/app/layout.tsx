@@ -29,6 +29,7 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Sarovar Palace",
   },
+  manifest: "/manifest.json",
 };
 
 export const viewport: import("next").Viewport = {

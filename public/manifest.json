@@ -1,0 +1,16 @@
+{
+  "name": "Shyam POS & Admin",
+  "short_name": "Shyam POS",
+  "description": "Hotel & Restaurant Management System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F3F4F8",
+  "theme_color": "#16A34A",
+  "icons": [
+    {
+      "src": "/menifest_logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ]
+}

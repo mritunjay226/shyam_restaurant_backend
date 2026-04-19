@@ -4,11 +4,16 @@
 // GroceryCheckoutDrawer.tsx
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState } from "react";
-import { motion } from "framer-motion";
-import { X, Plus, Minus, User, Percent, Receipt, Banknote, Smartphone, CreditCard, ChevronDown, ChevronUp } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
 import { type CartItem, type GroceryProduct } from "./GroceryPOS";
 import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+import { 
+  X, Plus, Minus, User, Percent, Receipt, 
+  Banknote, Smartphone, CreditCard, ChevronDown, ChevronUp 
+} from "lucide-react";
 
 const PAYMENT_METHODS = [
   { value: "cash", label: "Cash", icon: <Banknote size={14} /> },
@@ -51,6 +56,17 @@ export function GroceryCheckoutDrawer({
   const [customerPhone, setCustomerPhone] = useState("");
   const [showCustomer, setShowCustomer] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ── Auto-fill logic ────────────────────────────────────────────────────────
+  const recentCustomer = useQuery(api.grocery.getGroceryCustomerByPhone, 
+    customerPhone.length >= 10 ? { phone: customerPhone } : "skip"
+  );
+
+  useEffect(() => {
+    if (recentCustomer?.name && !customerName) {
+      setCustomerName(recentCustomer.name);
+    }
+  }, [recentCustomer, customerName]);
 
   // ── Computed totals ────────────────────────────────────────────────────────
 

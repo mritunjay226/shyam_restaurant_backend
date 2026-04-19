@@ -202,6 +202,8 @@ export default function PayrollPage() {
                 )}
               </tbody>
             </table>
+            {/* Mobile Nav Spacer */}
+            <div className="h-24 lg:h-8 shrink-0" />
           </div>
         </div>
       </main>

@@ -224,6 +224,18 @@ export const getGrocerySaleById = query({
   handler: async (ctx, args) => ctx.db.get(args.saleId),
 });
 
+export const getGroceryCustomerByPhone = query({
+  args: { phone: v.string() },
+  handler: async (ctx, args) => {
+    const sale = await ctx.db
+      .query("grocerySales")
+      .withIndex("by_customerPhone", (q) => q.eq("customerPhone", args.phone))
+      .order("desc")
+      .first();
+    return sale?.customerName ? { name: sale.customerName } : null;
+  },
+});
+
 // ─────────────────────────────────────────────────────────────────
 // GROCERY SALE MUTATIONS
 // ─────────────────────────────────────────────────────────────────

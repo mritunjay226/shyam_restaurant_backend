@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { format } from "date-fns";
+import { format, subWeeks, startOfWeek, endOfWeek } from "date-fns";
 import {
   BedDouble, CheckCircle2, LogOut, CalendarCheck, ArrowUpRight,
   UtensilsCrossed, Coffee, PartyPopper, IndianRupee, ClipboardList,
-  Users, Banknote, Table2, ShoppingBag,
+  Users, Banknote, Table2, ShoppingBag, Store
 } from "lucide-react";
 
 import { StatCard } from "@/components/StatCard";
@@ -28,18 +28,20 @@ const SPARK_REVENUE    = [5000, 7000, 6000, 9000, 8000, 12000, 10000, 15000, 120
 const SPARK_TABLES     = [2, 3, 4, 3, 5, 4, 6, 5, 7, 6];
 const SPARK_BANQ       = [1, 2, 1, 3, 2, 4, 3, 5, 4, 6];
 
-type TabId = "hotel" | "restaurant" | "cafe" | "banquet";
+type TabId = "hotel" | "restaurant" | "cafe" | "banquet" | "store";
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode; color: string; bg: string }[] = [
   { id: "hotel",      label: "Hotel",      icon: <BedDouble size={16} />,       color: "#16A34A", bg: "#DCFCE7" },
   { id: "restaurant", label: "Restaurant", icon: <UtensilsCrossed size={16} />, color: "#EA580C", bg: "#FFEDD5" },
   { id: "cafe",       label: "Café",       icon: <Coffee size={16} />,          color: "#D97706", bg: "#FEF3C7" },
   { id: "banquet",    label: "Banquets",   icon: <PartyPopper size={16} />,     color: "#7C3AED", bg: "#EDE9FE" },
+  { id: "store",      label: "Store",      icon: <Store size={16} />,           color: "#2563EB", bg: "#DBEAFE" },
 ];
 
 function getGreeting() {
   const h = new Date().getHours();
-  if (h < 12) return "Good Morning";
+  if (h >= 0 && h < 4) return "Late Night Working";
+  if (h >= 4 && h < 12) return "Good Morning";
   if (h < 17) return "Good Afternoon";
   return "Good Evening";
 }
@@ -121,15 +123,15 @@ function HotelTab({ today, rooms, arrivals, departures, allBookings, outletReven
       </div>
 
       {/* Bookings summary mini row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-2">
         {[
           { label: "Total Bookings", value: allBookings.length, color: "#16A34A" },
           { label: "Occupied Rooms", value: occupied,           color: "#D97706" },
           { label: "Today Revenue",  value: `₹${(outletRevenue?.hotel ?? 0).toLocaleString("en-IN")}`, color: "#2563EB" },
         ].map((s) => (
-          <div key={s.label} className="bg-card rounded-2xl border border-gray-100 shadow-sm p-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">{s.label}</p>
-            <p className="text-2xl font-bold tabular-nums" style={{ color: s.color }}>{s.value}</p>
+          <div key={s.label} className="bg-card rounded-2xl border border-gray-100 shadow-sm p-3 flex flex-col justify-center text-center sm:text-left sm:p-4">
+            <p className="text-[9px] sm:text-xs font-extrabold uppercase tracking-widest text-gray-400 mb-1 leading-tight truncate">{s.label}</p>
+            <p className="text-lg sm:text-2xl font-black tabular-nums truncate" style={{ color: s.color }}>{s.value}</p>
           </div>
         ))}
       </div>
@@ -375,6 +377,76 @@ function BanquetTab({ halls, allBanquetBookings, outletRevenue, today }: any) {
   );
 }
 
+function StoreTab({ groceryReport, lowStock, allSales }: any) {
+  const tab = TABS.find(t => t.id === "store") || TABS[0];
+  const revenue = groceryReport?.totalRevenue ?? 0;
+  
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Today's Revenue"   value={`₹${revenue.toLocaleString("en-IN")}`} icon={IndianRupee} iconBg="#DCFCE7" iconColor="#16A34A" sparkData={SPARK_REVENUE} sparkColor="#16A34A" delay={0.05} />
+        <StatCard label="Transactions Today"  value={groceryReport?.transactionCount ?? 0} icon={ShoppingBag} iconBg={tab.bg} iconColor={tab.color} sparkData={SPARK_ORDERS} sparkColor={tab.color} delay={0.10} />
+        <StatCard label="Low Stock Items"     value={lowStock.length} icon={ClipboardList} iconBg="#FEE2E2" iconColor="#DC2626" sparkData={SPARK_BANQ} sparkColor="#DC2626" delay={0.15} />
+        <StatCard label="Total Sales Records" value={allSales.length} icon={Banknote} iconBg={tab.bg} iconColor={tab.color} sparkData={SPARK_ORDERS} sparkColor={tab.color} delay={0.20} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-bold text-gray-900">Low Stock Alerts</p>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-red-100 text-red-700">
+              {lowStock.length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {lowStock.length === 0 ? (
+              <EmptyState text="All stock levels look good." />
+            ) : (
+              lowStock.slice(0, 6).map((p: any) => (
+                <HistoryRow
+                  key={p._id}
+                  avatar={p.name}
+                  name={p.name}
+                  sub={`${p.category} · Qty: ${p.stockQuantity} ${p.unit}`}
+                  right={`Thres: ${p.lowStockThreshold}`}
+                  status="pending_checkout"
+                  bg="#FEE2E2" color="#DC2626"
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-bold text-gray-900">Recent Grocery Sales</p>
+            <ArrowUpRight size={16} className="text-gray-400" />
+          </div>
+          <div className="space-y-3">
+            {allSales.length === 0 ? (
+              <EmptyState text="No recent sales found." />
+            ) : (
+              [...allSales]
+                .slice(0, 6)
+                .map((s: any) => (
+                  <HistoryRow
+                    key={s._id}
+                    avatar={s.receiptNumber}
+                    name={s.receiptNumber}
+                    sub={`${s.items.length} items · ${s.paymentMethod}`}
+                    right={`₹${s.totalAmount.toLocaleString("en-IN")}`}
+                    status={s.status}
+                    bg={tab.bg} color={tab.color}
+                  />
+                ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════
 // MAIN DASHBOARD
 // ══════════════════════════════════════════════════════════════════════
@@ -388,17 +460,29 @@ const WEEK_REVENUE_FALLBACK = [
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("hotel");
+  const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
 
   useEffect(() => { setMounted(true); }, []);
 
   const today = format(new Date(), "yyyy-MM-dd");
+  const selectedChartDate = format(subWeeks(new Date(), selectedWeekOffset), "yyyy-MM-dd");
+  
+  const weeks = Array.from({ length: 12 }).map((_, i) => {
+    const d = subWeeks(new Date(), i);
+    const s = startOfWeek(d, { weekStartsOn: 1 });
+    const e = endOfWeek(d, { weekStartsOn: 1 });
+    return {
+      offset: i,
+      label: i === 0 ? "This Week" : i === 1 ? "Last Week" : `${format(s, "MMM d")} - ${format(e, "MMM d")}`
+    };
+  });
 
   // ── Hotel data ──────────────────────────────────────────────────
   const rooms          = useQuery(api.rooms.getAllRooms, {}) ?? [];
   const arrivals       = useQuery(api.bookings.getTodayArrivals, { today }) ?? [];
   const departures     = useQuery(api.bookings.getTodayDepartures, { today }) ?? [];
   const allBookings    = useQuery(api.bookings.getAllBookings) ?? [];
-  const weeklyRevenue  = useQuery(api.reports.getWeeklyRevenue, { today });
+  const weeklyRevenue  = useQuery(api.reports.getWeeklyRevenue, { today: selectedChartDate });
   const dashStats      = useQuery(api.reports.getDashboardStats, { today });
   const outletRevenue  = useQuery(api.reports.getOutletDailyRevenue, { today });
 
@@ -412,6 +496,11 @@ export default function Dashboard() {
   const halls               = useQuery(api.banquet.getAllHalls, {}) ?? [];
   const allBanquetBookings  = useQuery(api.banquet.getAllBanquetBookings) ?? [];
 
+  // ── Grocery POS data ───────────────────────────────────────────
+  const groceryReport       = useQuery(api.grocery.getGroceryDailyReport, { date: today });
+  const lowStockProducts    = useQuery(api.grocery.getLowStockProducts, {}) ?? [];
+  const allGrocerySales     = useQuery(api.grocery.getAllGrocerySales, {}) ?? [];
+
   const todayRevenue = dashStats?.todayRevenue ?? 0;
 
   return (
@@ -422,7 +511,7 @@ export default function Dashboard() {
 
         {/* Greeting */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <h1 className="text-2xl font-bold text-gray-900">{getGreeting()}, Admin! 👋</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{mounted ? getGreeting() : "Welcome"}, Admin! 👋</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {format(new Date(), "EEEE, d MMMM yyyy")} · Here's everything happening at Sarovar Palace today.
           </p>
@@ -440,7 +529,8 @@ export default function Dashboard() {
                 ₹{(activeTab === 'hotel' ? outletRevenue?.hotel : 
                    activeTab === 'restaurant' ? outletRevenue?.restaurant :
                    activeTab === 'cafe' ? outletRevenue?.cafe :
-                   activeTab === 'banquet' ? outletRevenue?.banquet : todayRevenue)?.toLocaleString("en-IN") || 0}
+                   activeTab === 'banquet' ? outletRevenue?.banquet : 
+                   activeTab === 'store' ? groceryReport?.totalRevenue : todayRevenue)?.toLocaleString("en-IN") || 0}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -451,10 +541,11 @@ export default function Dashboard() {
                     { label: "Restaurant", val: outletRevenue.restaurant, color: "#EA580C" },
                     { label: "Café",       val: outletRevenue.cafe,       color: "#D97706" },
                     { label: "Banquet",    val: outletRevenue.banquet,    color: "#7C3AED" },
+                    { label: "Store",      val: groceryReport?.totalRevenue ?? 0, color: "#2563EB" },
                   ].map((s) => (
                     <div key={s.label} className="flex flex-col items-end">
-                      <span className="text-gray-400">{s.label}</span>
-                      <span style={{ color: s.color }}>₹{s.val.toLocaleString("en-IN")}</span>
+                       <span className="text-gray-400">{s.label}</span>
+                       <span style={{ color: s.color }}>₹{s.val.toLocaleString("en-IN")}</span>
                     </div>
                   ))}
                 </div>
@@ -462,6 +553,24 @@ export default function Dashboard() {
               <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded-lg">↑ 14%</span>
             </div>
           </div>
+          
+          {/* Week Selector Carousel */}
+          <div className="flex overflow-x-auto no-scrollbar gap-2 mt-4 pb-1 scroll-smooth snap-x">
+            {weeks.map((w) => (
+              <button
+                key={w.offset}
+                onClick={() => setSelectedWeekOffset(w.offset)}
+                className={`shrink-0 snap-end px-3 py-1.5 rounded-full text-[10px] sm:text-[11px] font-black uppercase tracking-widest transition-all duration-200 border ${
+                  selectedWeekOffset === w.offset
+                    ? "bg-gray-900 text-white border-gray-900 shadow-md shadow-gray-200"
+                    : "bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100 hover:text-gray-600"
+                }`}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+
           <div className="h-[180px] mt-4 relative w-full overflow-hidden">
             {mounted && (
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
@@ -483,26 +592,26 @@ export default function Dashboard() {
 
         {/* Tab Bar */}
         <motion.div
-          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.3 }}
-          className="flex gap-2 flex-wrap"
+           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.3 }}
+           className="flex gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1 px-1 -mx-1"
         >
           {TABS.map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                  active
-                    ? "shadow-sm"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                }`}
-                style={active ? { background: tab.bg, color: tab.color } : {}}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            );
+             const active = activeTab === tab.id;
+             return (
+               <button
+                 key={tab.id}
+                 onClick={() => setActiveTab(tab.id)}
+                 className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 shrink-0 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                   active
+                     ? "shadow-sm scale-100"
+                     : "text-gray-500 hover:text-gray-700 hover:bg-gray-100 scale-95 origin-center"
+                 }`}
+                 style={active ? { background: tab.bg, color: tab.color } : {}}
+               >
+                 <span className="shrink-0">{tab.icon}</span>
+                 {tab.label}
+               </button>
+             );
           })}
         </motion.div>
 
@@ -549,6 +658,13 @@ export default function Dashboard() {
                 allBanquetBookings={allBanquetBookings}
                 outletRevenue={outletRevenue}
                 today={today}
+              />
+            )}
+            {activeTab === "store" && (
+              <StoreTab
+                groceryReport={groceryReport}
+                lowStock={lowStockProducts}
+                allSales={allGrocerySales}
               />
             )}
           </motion.div>

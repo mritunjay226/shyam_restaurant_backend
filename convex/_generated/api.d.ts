@@ -19,6 +19,7 @@ import type * as grocery from "../grocery.js";
 import type * as guests from "../guests.js";
 import type * as http from "../http.js";
 import type * as menuItems from "../menuItems.js";
+import type * as notifications from "../notifications.js";
 import type * as orders from "../orders.js";
 import type * as razorpay from "../razorpay.js";
 import type * as razorpay_webhook from "../razorpay_webhook.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   guests: typeof guests;
   http: typeof http;
   menuItems: typeof menuItems;
+  notifications: typeof notifications;
   orders: typeof orders;
   razorpay: typeof razorpay;
   razorpay_webhook: typeof razorpay_webhook;

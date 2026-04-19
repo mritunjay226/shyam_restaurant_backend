@@ -14,7 +14,7 @@ function MiniSparkline({ data, color, positive = true }: MiniSparklineProps) {
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
-  const w = 80, h = 36;
+  const w = 64, h = 28;
   const pts = data.map((v, i) => {
     const x = (i / (data.length - 1)) * w;
     const y = h - ((v - min) / range) * (h - 4) - 2;
@@ -23,9 +23,9 @@ function MiniSparkline({ data, color, positive = true }: MiniSparklineProps) {
   const path = `M${pts.join(' L')}`;
   const fillPath = `M${pts[0]} L${pts.join(' L')} L${w},${h} L0,${h} Z`;
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none">
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" className="opacity-80 group-hover:opacity-100 transition-opacity">
       <path d={fillPath} fill={color} fillOpacity="0.12" />
-      <path d={path} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path d={path} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </svg>
   );
 }
@@ -67,36 +67,43 @@ export function StatCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+      initial={{ opacity: 0, scale: 0.97, y: 12 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ delay, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="h-full"
     >
-      <div className="bg-card rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-300">
-        <div className="flex items-start justify-between mb-3">
-          <div
-            className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
-            style={{ backgroundColor: iconBg }}
-          >
-            <Icon size={20} style={{ color: iconColor }} />
+      <div className="bg-white rounded-[24px] p-4 sm:p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)] border border-gray-100 hover:shadow-md transition-all duration-300 h-full flex flex-col justify-between group">
+        <div>
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <div
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center shrink-0 shadow-sm"
+              style={{ backgroundColor: iconBg }}
+            >
+              <Icon size={18} style={{ color: iconColor }} className="sm:w-5 sm:h-5" />
+            </div>
+            {sparkData && (
+              <MiniSparkline data={sparkData} color={sparkColor} positive={trend !== undefined ? trend >= 0 : true} />
+            )}
           </div>
-          {sparkData && (
-            <MiniSparkline data={sparkData} color={sparkColor} positive={trend !== undefined ? trend >= 0 : true} />
-          )}
+          
+          <div className="tabular-nums">
+            <p className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight leading-none">
+              {prefix}
+              {typeof displayed === "number" ? displayed.toLocaleString("en-IN") : displayed}
+              {suffix}
+            </p>
+            <p className="text-[#8B95A5] text-[12px] sm:text-[13px] mt-1.5 sm:mt-2 font-semibold leading-snug">
+              {label}
+            </p>
+          </div>
         </div>
-        <div className="tabular-nums">
-          <p className="text-2xl font-bold text-gray-900 leading-none">
-            {prefix}
-            {typeof displayed === "number" ? displayed.toLocaleString("en-IN") : displayed}
-            {suffix}
-          </p>
-          <p className="text-sm text-gray-500 mt-1.5 font-medium">{label}</p>
-        </div>
+
         {trend !== undefined && (
-          <div className="mt-3 flex items-center gap-1.5">
-            <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${trend >= 0 ? "text-green-700 bg-green-100" : "text-red-700 bg-red-100"}`}>
+          <div className="mt-3 sm:mt-4 flex items-center gap-1.5 opacity-95">
+            <span className={`text-[10px] sm:text-[11px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${trend >= 0 ? "text-emerald-700 bg-emerald-100/70" : "text-rose-700 bg-rose-100/70"}`}>
               {trend >= 0 ? "↑" : "↓"} {Math.abs(trend)}%
             </span>
-            <span className="text-xs text-gray-400">vs yesterday</span>
+            <span className="text-[10px] sm:text-[11px] text-gray-400 font-medium">vs yesterday</span>
           </div>
         )}
       </div>

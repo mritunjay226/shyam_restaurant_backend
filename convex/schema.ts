@@ -319,7 +319,8 @@ export default defineSchema({
   })
     .index("by_createdAt", ["createdAt"])
     .index("by_receiptNumber", ["receiptNumber"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_customerPhone", ["customerPhone"]),
 
   groceryStockMovements: defineTable({
     productId: v.id("groceryProducts"),

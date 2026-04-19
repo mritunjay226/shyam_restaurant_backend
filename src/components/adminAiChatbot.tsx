@@ -2,7 +2,7 @@
 
 // ─────────────────────────────────────────────────────────────────
 // AdminAIChatbot.tsx
-// src/components/AdminAIChatbot.tsx
+// Redesigned: Premium iMessage/WhatsApp feel with strict keyboard tolerance
 // ─────────────────────────────────────────────────────────────────
 
 import {
@@ -14,6 +14,8 @@ import {
 } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { Sparkles, SendHorizontal } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -63,22 +65,22 @@ async function sendMessage(
 
 function renderMarkdown(text: string): string {
   return text
-    .replace(/^### (.+)$/gm, '<h3 class="text-[13px] font-bold text-green-800 mt-2 mb-1">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="text-[14px] font-bold text-green-800 mt-2.5 mb-1">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="text-[15px] font-extrabold text-green-900 mt-3 mb-1.5">$1</h1>')
-    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong class="font-bold text-green-700 italic">$1</strong>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="font-bold text-green-700">$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em class="italic">$1</em>')
-    .replace(/`([^`]+)`/g, '<code class="bg-green-200/50 text-green-800 px-1.5 py-0.5 rounded-[4px] text-[12px] font-mono">$1</code>')
-    .replace(/^---$/gm, '<hr class="border-t border-green-200 my-3" />')
-    .replace(/^[-•] (.+)$/gm, '<li class="mb-0.5">$1</li>')
-    .replace(/(<li class="mb-0.5">.*<\/li>\n?)+/g, (m) => `<ul class="my-1.5 pl-4 list-disc">${m}</ul>`)
-    .replace(/^\d+\. (.+)$/gm, '<li class="mb-0.5">$1</li>')
-    .replace(/(<li class="mb-0.5">.*<\/li>\n?)+/g, (m) => `<ol class="my-1.5 pl-4 list-decimal">${m}</ol>`)
-    .replace(/^> (.+)$/gm, '<blockquote class="border-l-[3px] border-green-500 my-2 px-3 py-1.5 bg-green-100/50 rounded-r-md text-green-800 italic">$1</blockquote>')
-    .replace(/\n{2,}/g, '</p><p class="mb-2.5 last:mb-0">')
+    .replace(/^### (.+)$/gm, '<h3 class="text-[13px] font-bold text-violet-900 mt-2 mb-1">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-[14px] font-black text-violet-900 mt-3 mb-1">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="text-[15px] font-black text-indigo-900 mt-4 mb-2">$1</h1>')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong class="font-bold text-violet-700 italic">$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="font-black text-gray-900">$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em class="italic text-gray-600">$1</em>')
+    .replace(/`([^`]+)`/g, '<code class="bg-violet-100 text-violet-800 px-1.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-widest">$1</code>')
+    .replace(/^---$/gm, '<hr class="border-t border-gray-100 my-4" />')
+    .replace(/^[-•] (.+)$/gm, '<li class="mb-1 text-gray-700 leading-relaxed">$1</li>')
+    .replace(/(<li class="mb-1 text-gray-700 leading-relaxed">.*<\/li>\n?)+/g, (m) => `<ul class="my-2 pl-4 list-disc text-[13px] marker:text-violet-400">${m}</ul>`)
+    .replace(/^\d+\. (.+)$/gm, '<li class="mb-1 text-gray-700 leading-relaxed">$1</li>')
+    .replace(/(<li class="mb-1 text-gray-700 leading-relaxed">.*<\/li>\n?)+/g, (m) => `<ol class="my-2 pl-4 list-decimal text-[13px] font-medium">${m}</ol>`)
+    .replace(/^> (.+)$/gm, '<blockquote class="border-l-[3px] border-violet-500 my-3 pl-3 py-1 text-gray-600 italic font-medium">$1</blockquote>')
+    .replace(/\n{2,}/g, '</p><p class="mb-3 last:mb-0">')
     .replace(/\n/g, "<br />")
-    .replace(/^/, '<p class="mb-2.5 last:mb-0">')
+    .replace(/^/, '<p class="mb-3 last:mb-0 text-gray-700 leading-relaxed">')
     .replace(/$/, "</p>");
 }
 
@@ -88,20 +90,19 @@ const SUGGESTIONS: string[] = [
   "What was today's total revenue?",
   "Which rooms are currently occupied?",
   "Revenue breakdown for this month",
-  "Top selling menu items",
-  "Any upcoming banquet bookings?",
+  "Top selling menu items"
 ];
 
 // ─── Subcomponents ────────────────────────────────────────────────
 
 function AssistantBubble({ content }: { content: string }) {
   return (
-    <div className="flex items-start gap-2 mb-4 animate-[aiFadeUp_0.3s_ease-out_forwards]">
-      <div className="w-7 h-7 rounded-full shrink-0 mt-0.5 bg-green-600 flex items-center justify-center text-[13px] text-white font-bold shadow-sm">
-        ✦
+    <div className="flex items-end gap-2 mb-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center bg-violet-100 text-violet-600 border border-violet-200 shadow-[0_2px_8px_-2px_rgba(139,92,246,0.2)]">
+        <Sparkles size={12} className="fill-violet-600" />
       </div>
       <div
-        className="flex-1 bg-green-50 border border-green-200/60 rounded-2xl rounded-tl-sm px-4 py-3 text-[13.5px] leading-relaxed text-green-950 max-w-[calc(100%-36px)]"
+        className="flex-1 bg-white border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)] rounded-[20px] rounded-bl-sm px-4 py-3 text-[13px] max-w-[calc(100%-32px)] overflow-hidden"
         dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
       />
     </div>
@@ -110,8 +111,8 @@ function AssistantBubble({ content }: { content: string }) {
 
 function UserBubble({ content }: { content: string }) {
   return (
-    <div className="flex justify-end mb-4 animate-[aiFadeUp_0.3s_ease-out_forwards]">
-      <div className="bg-green-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-[13.5px] leading-relaxed max-w-[85%] sm:max-w-[75%] whitespace-pre-wrap shadow-sm">
+    <div className="flex justify-end mb-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="bg-linear-to-br from-indigo-600 to-violet-600 text-white rounded-[20px] rounded-br-sm px-4 py-2.5 text-[14px] leading-snug max-w-[85%] font-medium whitespace-pre-wrap shadow-[0_4px_16px_-4px_rgba(99,102,241,0.4)]">
         {content}
       </div>
     </div>
@@ -120,20 +121,20 @@ function UserBubble({ content }: { content: string }) {
 
 function TypingIndicator({ status }: { status: string }) {
   return (
-    <div className="flex items-center gap-2 mb-4 animate-[aiFadeUp_0.3s_ease-out_forwards]">
-      <div className="w-7 h-7 rounded-full shrink-0 bg-green-600 flex items-center justify-center text-[13px] text-white shadow-sm">
-        ✦
+    <div className="flex items-end gap-2 mb-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center bg-violet-100 text-violet-600 border border-violet-200">
+        <Sparkles size={12} />
       </div>
-      <div className="bg-green-50 border border-green-200/60 rounded-2xl rounded-tl-sm px-3.5 py-3 flex items-center gap-2 min-h-[34px]">
+      <div className="bg-white border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)] rounded-[20px] rounded-bl-sm px-4 py-3 min-h-[44px] flex items-center gap-2">
         {status ? (
-          <span className="text-[12px] text-green-700 italic">{status}</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-violet-400 animate-pulse">{status}</span>
         ) : (
-          <div className="flex gap-1.5">
+          <div className="flex gap-1">
             {[0, 1, 2].map((i) => (
               <span
                 key={i}
-                className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"
-                style={{ animation: `aiBounce 1.2s ease-in-out ${i * 0.2}s infinite` }}
+                className="w-1.5 h-1.5 rounded-full bg-violet-400 inline-block animate-bounce"
+                style={{ animationDelay: `${i * 0.15}s` }}
               />
             ))}
           </div>
@@ -150,7 +151,7 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
     {
       role: "assistant",
       content:
-        "Namaste! I'm your hotel AI assistant. I fetch **only the data I need** for each question.\n\nAsk me anything about your property.",
+        "Hello! I'm your interactive AI agent. I can access live data securely and assist you with anything regarding the hotel.",
     },
   ]);
 
@@ -158,6 +159,8 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
   const [input, setInput]             = useState("");
   const [loading, setLoading]         = useState(false);
   const [fetchStatus, setFetchStatus] = useState("");
+  const [viewportHeight, setViewportHeight] = useState("100dvh");
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   const bottomRef   = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -168,11 +171,45 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
     staffRole === "admin" ? { token } : "skip"
   );
 
-  // Scroll to bottom whenever messages or loading state changes
+  // ─────────────────────────────────────────────────────────────
+  // ULTIMATE KEYBOARD FIX (visualViewport API)
+  // This explicitly tracks the exact usable height inside mobile Safari/Chrome
+  // regardless of keyboard state, and adjusts the root container.
+  // ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    // Small timeout ensures the DOM has painted the new bubble first
+    if (!window.visualViewport) return;
+    
+    const onResize = () => {
+      const vh = window.visualViewport?.height || window.innerHeight;
+      const isKybdOpen = vh < window.innerHeight - 80;
+      setViewportHeight(`${vh}px`);
+      setIsKeyboardOpen(isKybdOpen);
+      
+      // Optional: slight nudge to scroll to bottom when keyboard shifts viewport
+      if (document.activeElement === textareaRef.current) {
+         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: 'end' }), 10);
+      }
+    };
+
+    window.visualViewport.addEventListener('resize', onResize);
+    window.visualViewport.addEventListener('scroll', onResize);
+    onResize();
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', onResize);
+      window.visualViewport?.removeEventListener('scroll', onResize);
+    };
+  }, []);
+
+  // Scroll to bottom effect
+  useEffect(() => {
     const t = setTimeout(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      if (scrollRef.current && bottomRef.current) {
+        scrollRef.current.scrollTo({
+           top: scrollRef.current.scrollHeight,
+           behavior: "smooth"
+        });
+      }
     }, 50);
     return () => clearTimeout(t);
   }, [messages, loading]);
@@ -183,9 +220,9 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
       if (!text || loading) return;
 
       setInput("");
-      // Reset textarea height
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
+        textareaRef.current.focus();
       }
 
       setMessages((prev) => [...prev, { role: "user", content: text }]);
@@ -207,14 +244,11 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
           { role: "model", parts: [{ text: reply }] },
         ]);
 
-        if (toolsUsed.length > 0) {
-          console.debug("[AI] tools used:", toolsUsed.join(", "));
-        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Something went wrong.";
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: `**Error:** ${msg}` },
+          { role: "assistant", content: `**System Error:** ${msg}` },
         ]);
       } finally {
         setLoading(false);
@@ -226,198 +260,63 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
+      e.preventDefault(); // Prevent newline
+      // Only send if native submit triggered from enter outside mobile dictation
+      if (!e.nativeEvent.isComposing) {
+         void handleSend();
+      }
     }
   };
 
   if (staffRole !== "admin") return null;
 
   return (
-    <>
-      <style>{`
-        @keyframes aiFadeUp {
-          from { opacity: 0; transform: translateY(8px) scale(0.98); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes aiBounce {
-          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-          40%           { transform: translateY(-4px); opacity: 1; }
-        }
-
-        /*
-         * THE KEY FIX — professional chat layout:
-         *
-         * The outer wrapper uses 100dvh (dynamic viewport height).
-         * dvh automatically shrinks when the software keyboard appears,
-         * so the whole shell shrinks to fit the visible area.
-         * No JS resize listeners, no visualViewport hacks needed.
-         *
-         * The input bar uses padding-bottom: env(safe-area-inset-bottom)
-         * to respect iPhone home indicator and notch insets.
-         *
-         * The message area is flex-1 + overflow-y-auto — it fills whatever
-         * space is left between the status bar and the input bar.
-         * When the keyboard appears, dvh shrinks, flex-1 shrinks, scroll works.
-         */
-        .ai-chat-shell {
-          display: flex;
-          flex-direction: column;
-          /* dvh = dynamic viewport height — shrinks when keyboard opens */
-          height: 100dvh;
-          /* Fallback for browsers that don't support dvh */
-          height: 100vh;
-          height: 100dvh;
-          width: 100%;
-          background: white;
-          font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .ai-status-bar {
-          flex-shrink: 0;
-          z-index: 10;
-        }
-
-        .ai-messages-area {
-          flex: 1;
-          overflow-y: auto;
-          /* Prevents rubber-band from causing content to go behind input */
-          overscroll-behavior-y: contain;
-          /* Scrollbar styling */
-          scrollbar-width: thin;
-          scrollbar-color: #bbf7d0 transparent;
-        }
-        .ai-messages-area::-webkit-scrollbar { width: 4px; }
-        .ai-messages-area::-webkit-scrollbar-track { background: transparent; }
-        .ai-messages-area::-webkit-scrollbar-thumb { background: #bbf7d0; border-radius: 9999px; }
-
-        .ai-input-bar {
-          flex-shrink: 0;
-          /* Critical: safe-area padding for iPhone notch/home indicator */
-          padding-bottom: max(12px, env(safe-area-inset-bottom));
-          border-top: 1px solid #f3f4f6;
-          background: #FAFFFE;
-          /* Prevent input bar from being pushed up awkwardly */
-          position: relative;
-        }
-
-        .ai-textarea {
-          flex: 1;
-          border: 1.5px solid #e5e7eb;
-          border-radius: 14px;
-          padding: 10px 14px;
-          font-size: 14px;
-          line-height: 1.5;
-          font-family: inherit;
-          color: #111827;
-          resize: none;
-          background: white;
-          transition: border-color 0.15s, box-shadow 0.15s;
-          overflow: hidden;
-          max-height: 120px;
-          /* Prevent iOS zoom on focus (font-size must be ≥16px OR explicitly set) */
-          font-size: max(16px, 14px);
-          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-        }
-        .ai-textarea:focus {
-          outline: none;
-          border-color: #16a34a;
-          box-shadow: 0 0 0 3px rgba(22,163,74,0.1);
-        }
-        .ai-textarea::placeholder { color: #9ca3af; }
-
-        .ai-send-btn {
-          width: 44px;
-          height: 44px;
-          border-radius: 14px;
-          background: #16a34a;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
-          box-shadow: 0 4px 12px rgba(22,163,74,0.25);
-        }
-        .ai-send-btn:hover:not(:disabled) {
-          background: #15803d;
-          box-shadow: 0 4px 16px rgba(22,163,74,0.35);
-          transform: translateY(-1px);
-        }
-        .ai-send-btn:active:not(:disabled) { transform: translateY(0); }
-        .ai-send-btn:disabled {
-          opacity: 0.45;
-          cursor: not-allowed;
-          box-shadow: none;
-        }
-
-        .ai-chip {
-          padding: 6px 14px;
-          border-radius: 9999px;
-          border: 1px solid #bbf7d0;
-          background: #f0fdf4;
-          color: #15803d;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background 0.12s, border-color 0.12s, transform 0.1s;
-          white-space: nowrap;
-          font-family: inherit;
-        }
-        .ai-chip:hover { background: #dcfce7; border-color: #4ade80; }
-        .ai-chip:active { transform: scale(0.96); }
-
-        @media (min-width: 640px) {
-          .ai-chat-shell {
-            max-width: 768px;
-            margin: 0 auto;
-            border-left: 1px solid #f3f4f6;
-            border-right: 1px solid #f3f4f6;
-            box-shadow: 0 0 0 1px #f3f4f6;
-          }
-        }
-      `}</style>
-
-      <div className="ai-chat-shell">
-
-        {/* ── Status bar ── */}
-        <div className="ai-status-bar px-4 py-2.5 border-b border-green-50/70 bg-[#FAFFFE] flex items-center gap-2.5 shadow-sm">
+    <div 
+      className="flex flex-col w-full bg-[#fcfcff] font-sans relative overflow-hidden" 
+      style={{ height: viewportHeight, maxHeight: "100dvh" }}
+    >
+      {/* ── Status bar ── */}
+      <div className="shrink-0 px-5 py-3 border-b border-gray-100 bg-white/80 backdrop-blur-md flex items-center justify-between z-10 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+        <div className="flex items-center gap-2">
           <div className="relative flex h-2 w-2">
-            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${stats ? "bg-green-500" : "bg-amber-400"}`} />
-            <span className={`relative inline-flex rounded-full h-2 w-2 ${stats ? "bg-green-600" : "bg-amber-500"}`} />
+            <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", stats ? "bg-emerald-500" : "bg-amber-400")} />
+            <span className={cn("relative inline-flex rounded-full h-2 w-2", stats ? "bg-emerald-600" : "bg-amber-500")} />
           </div>
-          <span className="text-[11.5px] text-gray-500 font-medium tracking-wide uppercase">
-            {stats
-              ? `Live · ${stats.rooms.occupied} Occupied · ₹${stats.revenue.today.toLocaleString("en-IN")} Today`
-              : "Connecting…"}
+          <span className="text-[10px] text-gray-500 font-extrabold tracking-widest uppercase">
+            {stats ? 'Online · Live Sync' : 'Reconnecting...'}
           </span>
         </div>
+        
+        {stats && (
+           <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
+             ₹{stats.revenue.today.toLocaleString()} Today
+           </div>
+        )}
+      </div>
 
-        {/* ── Messages ── */}
-        <div ref={scrollRef} className="ai-messages-area px-4 pt-5 pb-3">
-          {messages.map((msg, i) =>
-            msg.role === "assistant" ? (
-              <AssistantBubble key={i} content={msg.content} />
-            ) : (
-              <UserBubble key={i} content={msg.content} />
-            )
-          )}
-          {loading && <TypingIndicator status={fetchStatus} />}
-          {/* This div is scrolled into view after each new message */}
-          <div ref={bottomRef} className="h-1" />
-        </div>
-
-        {/* ── Suggestion chips (shown only on first load) ── */}
+      {/* ── Messages ── */}
+      <div 
+        ref={scrollRef} 
+        className="flex-1 overflow-y-auto px-4 sm:px-6 pt-6 pb-2 scroll-smooth"
+        style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}
+      >
+        {messages.map((msg, i) =>
+          msg.role === "assistant" ? (
+            <AssistantBubble key={i} content={msg.content} />
+          ) : (
+            <UserBubble key={i} content={msg.content} />
+          )
+        )}
+        {loading && <TypingIndicator status={fetchStatus} />}
+        
+        {/* Suggestion chips (shown only on first load) */}
         {messages.length === 1 && (
-          <div className="px-4 pb-3 flex flex-wrap gap-2 shrink-0 animate-[aiFadeUp_0.4s_ease-out_forwards]">
+          <div className="flex flex-col gap-2 mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-150 fill-mode-both">
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
-                className="ai-chip"
                 onClick={() => void handleSend(s)}
+                className="self-start text-[12px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-100/50 rounded-xl px-4 py-2.5 transition-colors active:scale-95 origin-left"
               >
                 {s}
               </button>
@@ -425,36 +324,53 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
           </div>
         )}
 
-        {/* ── Input bar ── */}
-        <div className="ai-input-bar px-3 sm:px-4 pt-3 flex gap-2.5 items-end">
+        <div ref={bottomRef} className="h-4" />
+      </div>
+
+      {/* ── Input bar ── */}
+      <div 
+        className="shrink-0 bg-white border-t border-gray-100 pt-3 px-3 sm:px-4"
+        style={{
+          // On mobile, the global BottomNav is ~64px tall. 
+          // If the keyboard is closed, pad the bottom by 64px so the input rests ON TOP of BottomNav.
+          // If the keyboard is open, remove the 64px so it rests flush against the keyboard!
+          paddingBottom: isKeyboardOpen
+             ? "max(12px, env(safe-area-inset-bottom))"
+             : "calc(max(12px, env(safe-area-inset-bottom)) + 90px)",
+          transition: "padding-bottom 0.15s ease-out"
+        }}
+      >
+        <div className="relative flex items-end gap-2 bg-gray-50/50 border border-gray-200 rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-violet-500/20 focus-within:border-violet-500/30 transition-all shadow-inner">
           <textarea
             ref={textareaRef}
-            className="ai-textarea"
             value={input}
             rows={1}
-            placeholder="Ask anything about your hotel…"
+            placeholder="Message AI Assistant..."
+            className="flex-1 max-h-[120px] bg-transparent resize-none border-none outline-none text-[15px] text-gray-900 placeholder:text-gray-400 py-2.5 px-4 scrollbar-hide"
+            // Critical for iOS: font-size 16px to prevent zoom
+            style={{ fontSize: '16px' }}
             onChange={(e) => {
               setInput(e.target.value);
-              // Auto-grow
               e.currentTarget.style.height = "auto";
               e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 120) + "px";
             }}
             onKeyDown={handleKeyDown}
           />
           <button
-            className="ai-send-btn"
             onClick={() => void handleSend()}
             disabled={loading || !input.trim()}
-            aria-label="Send message"
+            className={cn(
+              "shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all",
+              input.trim() && !loading
+                ? "bg-indigo-600 text-white shadow-md hover:bg-indigo-700 active:scale-95"
+                : "bg-gray-100 text-gray-400"
+            )}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 2, marginTop: 2 }}>
-              <path d="M22 2L11 13" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <SendHorizontal size={18} className={cn(input.trim() && !loading && "translate-x-px translate-y-px")} />
           </button>
         </div>
-
+        <p className="text-center text-[9px] font-bold text-gray-300 mt-2 uppercase tracking-widest">Powered by Antigravity Agentic Models</p>
       </div>
-    </>
+    </div>
   );
 }

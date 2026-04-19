@@ -42,23 +42,16 @@ export const createOrder = action({
     const settings = await ctx.runQuery(api.settings.getHotelSettings);
     const advancePercent = (settings?.advancePercentage ?? 20) / 100;
     
-    // 3. SECURE VERIFICATION: Recalculate the expected advance amount
+    // 3. SECURE VERIFICATION: Recalculate the expected advance amount strictly
     const expectedAdvance = Math.round(booking.totalAmount * advancePercent);
     
-    // We allow a small tolerance for rounding or use the amount sent if it matches
-    // For now, we trust the amount passed if it's within 1 INR of expected
+    // Instead of warning, we ENFORCE the expectedAdvance to prevent manipulation
     if (Math.abs(args.amount - expectedAdvance) > 1) {
-       console.warn(`Amount mismatch: Received ${args.amount}, Expected ${expectedAdvance}`);
-       // Optionally throw error to prevent tampering
-       // throw new Error("Payment amount mismatch. Potential tampering detected.");
+       console.warn(`Amount mismatch detected, forcing backend calculation: Received ${args.amount}, Expected ${expectedAdvance}`);
     }
     
-    // Let's assume we have a getBookingById query or use getBookingByTrackingCode if we can find it.
-    // I'll add getBookingById to bookings.ts if needed.
-    // For now, let's create the order.
-    
     const options = {
-      amount: Math.round(args.amount * 100), // amount in the smallest currency unit (paise)
+      amount: expectedAdvance * 100, // amount strictly controlled by backend (in paise)
       currency: "INR",
       receipt: args.bookingId,
     };

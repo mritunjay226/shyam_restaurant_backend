@@ -4,7 +4,7 @@
 // GroceryPOS.tsx — Orchestrator: wires cart state + renders all sub-components
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
@@ -22,6 +22,7 @@ import { GroceryInventoryPanel } from "./GroceryInventoryPanel";
 import { GroceryAddProductModal } from "./GroceryAddProductModal";
 import { CounterSelector } from "./CounterSelector";
 import { BarcodeScannerUI } from "./BarcodeScannerUI";
+import { GroceryReceiptModal } from "./GroceryReceiptModal";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -71,6 +72,8 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
   const [search, setSearch] = useState("");
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [lastSyncId, setLastSyncId] = useState<string | null>(null);
+  const [receiptSaleId, setReceiptSaleId] = useState<Id<"grocerySales"> | null>(null);
 
   // ── Database Cart Sync 
   const dbCart = useQuery(api.grocery.getActiveCart, selectedCounter ? { counterId: selectedCounter.id } : "skip");
@@ -93,6 +96,21 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
       quantity: item.quantity
     };
   });
+
+  // ── Sync Presence Detection ──────────────────────────────────────────────
+  useEffect(() => {
+    if (dbCart?.lastUpdated) {
+      // Find the item that likely changed (newest added or qty changed)
+      // Here we just mark the lastUpdated to trigger a small UI state
+      const items = dbCart.items || [];
+      if (items.length > 0) {
+        const lastItem = items[items.length - 1];
+        setLastSyncId(lastItem.cartId);
+        const timer = setTimeout(() => setLastSyncId(null), 2000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [dbCart?.lastUpdated]);
 
   // ── Mutations
   const createSale = useMutation(api.grocery.createGrocerySale);
@@ -226,6 +244,7 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
         toast.success(`✅ Sale ${result.receiptNumber} · ₹${result.totalAmount.toLocaleString()}`);
         await clearCart();
         setIsCheckoutOpen(false);
+        setReceiptSaleId(result.saleId); // Show receipt
       } catch (e: any) {
         toast.error(e.message || "Sale failed");
         throw e;
@@ -316,6 +335,7 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
               onSetQty={setCartItemQty}
               onClear={clearCart}
               onCheckout={() => setIsCheckoutOpen(true)}
+              lastSyncId={lastSyncId}
             />
           </div>
         </div>
@@ -369,6 +389,15 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
           />
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {receiptSaleId && (
+          <GroceryReceiptModal 
+            saleId={receiptSaleId} 
+            onClose={() => setReceiptSaleId(null)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -378,6 +407,17 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
 
 import { Trash2, Plus, Minus, ShoppingCart } from "lucide-react";
 
+interface SidebarProps {
+  cart: CartItem[];
+  subtotal: number;
+  onAdd: (p: GroceryProduct) => void;
+  onRemove: (cartId: string) => void;
+  onSetQty: (cartId: string, qty: number) => void;
+  onClear: () => void;
+  onCheckout: () => void;
+  lastSyncId?: string | null;
+}
+
 function GroceryCartSidebar({
   cart,
   subtotal,
@@ -386,15 +426,8 @@ function GroceryCartSidebar({
   onSetQty,
   onClear,
   onCheckout,
-}: {
-  cart: CartItem[];
-  subtotal: number;
-  onAdd: (p: GroceryProduct) => void;
-  onRemove: (cartId: string) => void;
-  onSetQty: (cartId: string, qty: number) => void;
-  onClear: () => void;
-  onCheckout: () => void;
-}) {
+  lastSyncId,
+}: SidebarProps) {
   const totalItems = cart.reduce((a, i) => a + i.quantity, 0);
 
   return (
@@ -433,8 +466,13 @@ function GroceryCartSidebar({
           </div>
         ) : (
           cart.map((item) => (
-            <div
+            <motion.div
               key={item.cartId}
+              animate={lastSyncId === item.cartId ? { 
+                backgroundColor: ["#F7F6F3", "#D1FAE5", "#F7F6F3"],
+                scale: [1, 1.02, 1] 
+              } : {}}
+              transition={{ duration: 0.8 }}
               className="cart-item-enter flex items-center gap-3 p-3 bg-[#F7F6F3] rounded-2xl group"
             >
               {/* Stock indicator dot */}
@@ -474,7 +512,7 @@ function GroceryCartSidebar({
               <span className="text-sm font-black text-gray-900 w-16 text-right tabular-nums shrink-0">
                 ₹{(item.product.sellingPrice * item.quantity).toLocaleString()}
               </span>
-            </div>
+            </motion.div>
           ))
         )}
       </div>

@@ -212,7 +212,7 @@ function AIChatbotButton({ token, staffRole }: { token: string; staffRole: strin
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+              className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm"
               onClick={() => setOpen(false)}
             />
 
@@ -222,7 +222,7 @@ function AIChatbotButton({ token, staffRole }: { token: string; staffRole: strin
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="fixed right-0 top-0 z-50 h-dvh w-full sm:max-w-[480px] flex flex-col shadow-2xl bg-white"
+              className="fixed right-0 top-0 z-[100] h-dvh w-full sm:max-w-[480px] flex flex-col shadow-2xl bg-white"
             >
               <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-green-100 shrink-0">
                 <span className="text-xs font-black uppercase tracking-widest text-green-700">AI Assistant</span>
@@ -384,14 +384,7 @@ export function Topbar() {
             <AIChatbotButton token={token} staffRole={staff.role} />
           )}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative text-gray-500 hover:bg-gray-100 shrink-0"
-          >
-            <Bell size={20} />
-            <span className="absolute top-2 right-2.5 h-1.5 w-1.5 rounded-full bg-red-500" />
-          </Button>
+
 
           {/* Avatar + Popover (Mobile) */}
           <Popover>
@@ -467,14 +460,7 @@ export function DesktopTopbar({ title }: { title?: string; outlet?: string }) {
           <kbd className="text-[10px] font-bold text-gray-400 border border-gray-300 rounded px-1 py-0.5">⌘K</kbd>
         </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative text-gray-500 hover:bg-gray-100"
-        >
-          <Bell size={20} />
-          <span className="absolute top-2 right-2.5 h-1.5 w-1.5 rounded-full bg-red-500" />
-        </Button>
+
 
         <Popover>
           <PopoverTrigger className="w-8 h-8 rounded-full bg-linear-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-bold text-xs cursor-pointer shadow-md shadow-indigo-100 hover:scale-105 transition-transform border-none outline-none">

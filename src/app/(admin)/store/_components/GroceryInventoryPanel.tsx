@@ -10,6 +10,8 @@ import { api } from "../../../../../convex/_generated/api";
 import { AlertTriangle, Package, Search, ArrowUp, ArrowDown, Edit3, Check, X } from "lucide-react";
 import { type GroceryProduct } from "./GroceryPOS";
 import { toast } from "sonner";
+import { GroceryBulkStockInModal } from "./GroceryBulkStockInModal";
+import { AnimatePresence } from "framer-motion";
 
 interface GroceryInventoryPanelProps {
   products: GroceryProduct[];
@@ -28,6 +30,7 @@ export function GroceryInventoryPanel({ products, lowStockProducts }: GroceryInv
   const [editState, setEditState] = useState<StockEditState | null>(null);
   const [editPriceId, setEditPriceId] = useState<string | null>(null);
   const [newPrice, setNewPrice] = useState("");
+  const [isStockInOpen, setIsStockInOpen] = useState(false);
 
   const adjustStock = useMutation(api.grocery.adjustGroceryStock);
   const updateProduct = useMutation(api.grocery.updateGroceryProduct);
@@ -134,6 +137,13 @@ export function GroceryInventoryPanel({ products, lowStockProducts }: GroceryInv
           >
             <AlertTriangle size={12} />
             Low Stock
+          </button>
+          <button
+            onClick={() => setIsStockInOpen(true)}
+            className="h-9 px-4 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+          >
+            <ArrowUp size={14} />
+            Bulk Stock-In
           </button>
         </div>
 
@@ -277,6 +287,15 @@ export function GroceryInventoryPanel({ products, lowStockProducts }: GroceryInv
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {isStockInOpen && (
+          <GroceryBulkStockInModal 
+            products={products} 
+            onClose={() => setIsStockInOpen(false)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
