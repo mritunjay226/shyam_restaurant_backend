@@ -188,6 +188,16 @@ function AIChatbotButton({ token, staffRole }: { token: string; staffRole: strin
 
   if (staffRole !== "admin") return null;
 
+  // Hide BottomNav when chat is open
+  useEffect(() => {
+    if (open) {
+      document.body.classList.add("chat-open");
+    } else {
+      document.body.classList.remove("chat-open");
+    }
+    return () => document.body.classList.remove("chat-open");
+  }, [open]);
+
   return (
     <>
       <button
