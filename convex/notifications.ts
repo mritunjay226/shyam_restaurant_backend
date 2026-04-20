@@ -1,9 +1,9 @@
 "use node";
 
-import { action } from "./_generated/server";
+import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 
-export const sendWhatsAppBookingConfirmation = action({
+export const sendWhatsAppBookingConfirmation = internalAction({
   args: {
     phone: v.string(),
     guestName: v.string(),

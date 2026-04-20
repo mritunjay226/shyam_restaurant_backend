@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 // ─────────────────────────────────────────────────────────────────
 // FOLIO NUMBER HELPER
@@ -365,7 +365,7 @@ export const confirmPayment = mutation({
     });
 
     // Schedule WhatsApp confirmation
-    await ctx.scheduler.runAfter(0, api.notifications.sendWhatsAppBookingConfirmation, {
+    await ctx.scheduler.runAfter(0, internal.notifications.sendWhatsAppBookingConfirmation, {
       phone: booking.guestPhone,
       guestName: booking.guestName,
       checkIn: booking.checkIn,
@@ -435,7 +435,7 @@ export const confirmPaymentByOrderId = mutation({
     });
 
     // Schedule WhatsApp confirmation
-    await ctx.scheduler.runAfter(0, api.notifications.sendWhatsAppBookingConfirmation, {
+    await ctx.scheduler.runAfter(0, internal.notifications.sendWhatsAppBookingConfirmation, {
       phone: booking.guestPhone,
       guestName: booking.guestName,
       checkIn: booking.checkIn,

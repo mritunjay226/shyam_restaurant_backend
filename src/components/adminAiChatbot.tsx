@@ -159,7 +159,6 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
   const [input, setInput]             = useState("");
   const [loading, setLoading]         = useState(false);
   const [fetchStatus, setFetchStatus] = useState("");
-  const [viewportHeight, setViewportHeight] = useState("100dvh");
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   const bottomRef   = useRef<HTMLDivElement>(null);
@@ -171,33 +170,26 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
     staffRole === "admin" ? { token } : "skip"
   );
 
-  // ─────────────────────────────────────────────────────────────
-  // ULTIMATE KEYBOARD FIX (visualViewport API)
-  // This explicitly tracks the exact usable height inside mobile Safari/Chrome
-  // regardless of keyboard state, and adjusts the root container.
-  // ─────────────────────────────────────────────────────────────
+  // Track keyboard state only — don't touch container height (parent panel owns that)
   useEffect(() => {
     if (!window.visualViewport) return;
     
     const onResize = () => {
       const vh = window.visualViewport?.height || window.innerHeight;
-      const isKybdOpen = vh < window.innerHeight - 80;
-      setViewportHeight(`${vh}px`);
-      setIsKeyboardOpen(isKybdOpen);
+      setIsKeyboardOpen(vh < window.innerHeight - 80);
       
-      // Optional: slight nudge to scroll to bottom when keyboard shifts viewport
       if (document.activeElement === textareaRef.current) {
-         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: 'end' }), 10);
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 100);
       }
     };
 
-    window.visualViewport.addEventListener('resize', onResize);
-    window.visualViewport.addEventListener('scroll', onResize);
+    window.visualViewport.addEventListener("resize", onResize);
+    window.visualViewport.addEventListener("scroll", onResize);
     onResize();
 
     return () => {
-      window.visualViewport?.removeEventListener('resize', onResize);
-      window.visualViewport?.removeEventListener('scroll', onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("scroll", onResize);
     };
   }, []);
 
@@ -272,8 +264,7 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
 
   return (
     <div 
-      className="flex flex-col w-full bg-[#fcfcff] font-sans relative overflow-hidden" 
-      style={{ height: viewportHeight, maxHeight: "100dvh" }}
+      className="flex flex-col w-full h-full bg-[#fcfcff] font-sans"
     >
       {/* ── Status bar ── */}
       <div className="shrink-0 px-5 py-3 border-b border-gray-100 bg-white/80 backdrop-blur-md flex items-center justify-between z-10 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
@@ -294,11 +285,11 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
         )}
       </div>
 
-      {/* ── Messages ── */}
+      {/* ── Messages (fills remaining space, scrollable) ── */}
       <div 
         ref={scrollRef} 
-        className="flex-1 overflow-y-auto px-4 sm:px-6 pt-6 pb-2 scroll-smooth"
-        style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}
+        className="flex-1 overflow-y-auto px-4 sm:px-6 pt-6 pb-2 scroll-smooth min-h-0"
+        style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
       >
         {messages.map((msg, i) =>
           msg.role === "assistant" ? (
@@ -327,16 +318,13 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
         <div ref={bottomRef} className="h-4" />
       </div>
 
-      {/* ── Input bar ── */}
+      {/* ── Input bar — always pinned at bottom ── */}
       <div 
         className="shrink-0 bg-white border-t border-gray-100 pt-3 px-3 sm:px-4"
         style={{
-          // On mobile, the global BottomNav is ~64px tall. 
-          // If the keyboard is closed, pad the bottom by 64px so the input rests ON TOP of BottomNav.
-          // If the keyboard is open, remove the 64px so it rests flush against the keyboard!
           paddingBottom: isKeyboardOpen
-             ? "max(12px, env(safe-area-inset-bottom))"
-             : "calc(max(12px, env(safe-area-inset-bottom)) + 90px)",
+            ? "max(12px, env(safe-area-inset-bottom))"
+            : "max(16px, env(safe-area-inset-bottom))",
           transition: "padding-bottom 0.15s ease-out"
         }}
       >
@@ -345,9 +333,8 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
             ref={textareaRef}
             value={input}
             rows={1}
-            placeholder="Message AI Assistant..."
-            className="flex-1 max-h-[120px] bg-transparent resize-none border-none outline-none text-[15px] text-gray-900 placeholder:text-gray-400 py-2.5 px-4 scrollbar-hide"
-            // Critical for iOS: font-size 16px to prevent zoom
+            placeholder="Ask anything about your hotel..."
+            className="flex-1 max-h-[120px] bg-transparent resize-none border-none outline-none text-gray-900 placeholder:text-gray-400 py-2.5 px-4 scrollbar-hide"
             style={{ fontSize: '16px' }}
             onChange={(e) => {
               setInput(e.target.value);
