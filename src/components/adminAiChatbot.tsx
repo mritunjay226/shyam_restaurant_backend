@@ -159,7 +159,7 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
   const [input, setInput]             = useState("");
   const [loading, setLoading]         = useState(false);
   const [fetchStatus, setFetchStatus] = useState("");
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const bottomRef   = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -170,21 +170,21 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
     staffRole === "admin" ? { token } : "skip"
   );
 
-  // Track keyboard state only — don't touch container height (parent panel owns that)
+  // Detect exact keyboard height via visualViewport and push content up
   useEffect(() => {
-    if (!window.visualViewport) return;
-    
     const onResize = () => {
-      const vh = window.visualViewport?.height || window.innerHeight;
-      setIsKeyboardOpen(vh < window.innerHeight - 80);
-      
-      if (document.activeElement === textareaRef.current) {
+      if (!window.visualViewport) return;
+      const vvHeight = window.visualViewport.height;
+      const vvOffsetTop = window.visualViewport.offsetTop || 0;
+      const kb = Math.max(0, window.innerHeight - vvHeight - vvOffsetTop);
+      setKeyboardHeight(kb);
+      if (kb > 0) {
         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 100);
       }
     };
 
-    window.visualViewport.addEventListener("resize", onResize);
-    window.visualViewport.addEventListener("scroll", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("scroll", onResize);
     onResize();
 
     return () => {
@@ -265,6 +265,10 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
   return (
     <div 
       className="flex flex-col w-full h-full bg-[#fcfcff] font-sans"
+      style={{ 
+        paddingBottom: keyboardHeight,
+        transition: "padding-bottom 0.15s ease-out"
+      }}
     >
       {/* ── Status bar ── */}
       <div className="shrink-0 px-5 py-3 border-b border-gray-100 bg-white/80 backdrop-blur-md flex items-center justify-between z-10 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
@@ -320,13 +324,7 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
 
       {/* ── Input bar — always pinned at bottom ── */}
       <div 
-        className="shrink-0 bg-white border-t border-gray-100 pt-3 px-3 sm:px-4"
-        style={{
-          paddingBottom: isKeyboardOpen
-            ? "max(12px, env(safe-area-inset-bottom))"
-            : "max(16px, env(safe-area-inset-bottom))",
-          transition: "padding-bottom 0.15s ease-out"
-        }}
+        className="shrink-0 bg-white border-t border-gray-100 pt-3 px-3 sm:px-4 pb-4"
       >
         <div className="relative flex items-end gap-2 bg-gray-50/50 border border-gray-200 rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-violet-500/20 focus-within:border-violet-500/30 transition-all shadow-inner">
           <textarea

@@ -211,7 +211,7 @@ function buildSystemPrompt(today: string): string {
   const prevMonthEnd = fmt(new Date(d.getFullYear(), d.getMonth(), 0));
   const prevMonthStart = fmt(new Date(d.getFullYear(), d.getMonth() - 1, 1));
 
-  return `You are ShyamOS, an elite executive AI assistant for Shyam Hotel & Restaurant. You have real-time access to the entire hotel PMS and POS database.
+  return `You are SarovarOs, an elite executive AI assistant for Sarovar Palace. You have real-time access to the entire hotel PMS and POS database.
 Today's Date: ${today}.
 
 # TEMPORAL CONTEXT
