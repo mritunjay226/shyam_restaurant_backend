@@ -354,7 +354,7 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
             <SendHorizontal size={18} className={cn(input.trim() && !loading && "translate-x-px translate-y-px")} />
           </button>
         </div>
-        <p className="text-center text-[9px] font-bold text-gray-300 mt-2 uppercase tracking-widest">Powered by Antigravity Agentic Models</p>
+        {/* <p className="text-center text-[9px] font-bold text-gray-300 mt-2 uppercase tracking-widest">Powered by Antigravity Agentic Models</p> */}
       </div>
     </div>
   );
