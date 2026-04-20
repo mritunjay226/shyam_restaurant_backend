@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/AuthProvider";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import Image from "next/image";
 
 const NAV_GROUPS = [
   {
@@ -92,12 +93,9 @@ export function SidebarContent({ isMobile = false }) {
     <div className="flex flex-col h-full bg-white" style={{paddingTop: isElectron ? "36px" : "0px"}}>
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 h-[64px] border-b border-gray-100 shrink-0">
-        <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center text-white font-bold text-sm tracking-wide shrink-0 shadow-sm overflow-hidden">
-          {settings?.hotelName ? (
-            <span className="uppercase">{settings.hotelName.substring(0, 2)}</span>
-          ) : (
-             "SP"
-          )}
+        <div className="w-9 h-9 rounded-xl bg-[#ffe6c5] flex items-center justify-center text-white font-bold text-sm tracking-wide shrink-0 shadow-sm overflow-hidden">
+        <Image src="/logo.png" alt="logo" width={100} height={100} className="w-full h-full rounded-full object-cover" />
+          
         </div>
         <div className="leading-tight">
           <p className="text-sm font-bold text-gray-900 truncate max-w-[140px]">{settings?.hotelName || "Sarovar Palace"}</p>

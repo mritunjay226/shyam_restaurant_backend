@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import AdminAIChatbot from "@/components/adminAiChatbot";
 import { toast } from "sonner";
+import Image from "next/image";
 
 // ─── Auth hook — reads token from localStorage, validates via Convex ─────────
 
@@ -378,8 +379,8 @@ export function Topbar() {
           </Sheet>
 
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-green-600 flex items-center justify-center text-white text-[11px] font-bold shrink-0">
-              SP
+            <div className="w-7 h-7 rounded-lg bg-[#ffe6c5] flex items-center justify-center text-white text-[11px] font-bold shrink-0">
+              <Image src="/logo.png" alt="logo" width={100} height={100} className="w-full h-full rounded-full object-cover" />
             </div>
             <span className="text-sm font-bold text-gray-900 truncate max-w-[100px] xs:max-w-none">
               Sarovar Palace
