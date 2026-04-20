@@ -1,10 +1,5 @@
 "use client";
 
-// ─────────────────────────────────────────────────────────────────
-// AdminAIChatbot.tsx
-// Redesigned: Premium iMessage/WhatsApp feel with strict keyboard tolerance
-// ─────────────────────────────────────────────────────────────────
-
 import {
   useState,
   useRef,
@@ -14,10 +9,8 @@ import {
 } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Sparkles, SendHorizontal } from "lucide-react";
+import { Sparkles, SendHorizontal, Zap, TrendingUp, BedDouble, UtensilsCrossed, CalendarCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-// ─── Types ───────────────────────────────────────────────────────
 
 interface Message {
   role: "user" | "assistant";
@@ -34,75 +27,62 @@ interface Props {
   staffRole: string;
 }
 
-// ─── API call ────────────────────────────────────────────────────
-
 async function sendMessage(
   token: string,
   history: GeminiTurn[],
   userMessage: string,
   onStatus: (msg: string) => void
 ): Promise<{ text: string; toolsUsed: string[] }> {
-  onStatus("Thinking…");
-
+  onStatus("Thinking...");
   const res = await fetch("/api/ai-chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, history, userMessage }),
   });
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? `Server error ${res.status}`);
   }
-
   const data = await res.json() as { text?: string; error?: string; toolsUsed?: string[] };
   if (data.error) throw new Error(data.error);
-
   return { text: data.text ?? "No response.", toolsUsed: data.toolsUsed ?? [] };
 }
 
-// ─── Markdown renderer ────────────────────────────────────────────
-
 function renderMarkdown(text: string): string {
   return text
-    .replace(/^### (.+)$/gm, '<h3 class="text-[13px] font-bold text-violet-900 mt-2 mb-1">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="text-[14px] font-black text-violet-900 mt-3 mb-1">$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3 class="text-[13px] font-bold text-violet-900 mt-3 mb-1">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-[14px] font-black text-violet-900 mt-4 mb-1">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 class="text-[15px] font-black text-indigo-900 mt-4 mb-2">$1</h1>')
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong class="font-bold text-violet-700 italic">$1</strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong class="font-black text-gray-900">$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em class="italic text-gray-600">$1</em>')
-    .replace(/`([^`]+)`/g, '<code class="bg-violet-100 text-violet-800 px-1.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-widest">$1</code>')
+    .replace(/\*(.+?)\*/g, '<em class="italic text-gray-500">$1</em>')
+    .replace(/`([^`]+)`/g, '<code class="bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded-md text-[11px] font-bold border border-violet-100">$1</code>')
     .replace(/^---$/gm, '<hr class="border-t border-gray-100 my-4" />')
-    .replace(/^[-•] (.+)$/gm, '<li class="mb-1 text-gray-700 leading-relaxed">$1</li>')
-    .replace(/(<li class="mb-1 text-gray-700 leading-relaxed">.*<\/li>\n?)+/g, (m) => `<ul class="my-2 pl-4 list-disc text-[13px] marker:text-violet-400">${m}</ul>`)
-    .replace(/^\d+\. (.+)$/gm, '<li class="mb-1 text-gray-700 leading-relaxed">$1</li>')
-    .replace(/(<li class="mb-1 text-gray-700 leading-relaxed">.*<\/li>\n?)+/g, (m) => `<ol class="my-2 pl-4 list-decimal text-[13px] font-medium">${m}</ol>`)
-    .replace(/^> (.+)$/gm, '<blockquote class="border-l-[3px] border-violet-500 my-3 pl-3 py-1 text-gray-600 italic font-medium">$1</blockquote>')
-    .replace(/\n{2,}/g, '</p><p class="mb-3 last:mb-0">')
+    .replace(/^[-] (.+)$/gm, '<li class="mb-1 text-[13px] text-gray-700 leading-relaxed">$1</li>')
+    .replace(/^> (.+)$/gm, '<blockquote class="border-l-[3px] border-violet-400 my-3 pl-3 py-1 bg-violet-50/60 rounded-r-lg text-gray-600 italic">$1</blockquote>')
+    .replace(/\n{2,}/g, '</p><p class="mb-2 last:mb-0">')
     .replace(/\n/g, "<br />")
-    .replace(/^/, '<p class="mb-3 last:mb-0 text-gray-700 leading-relaxed">')
+    .replace(/^/, '<p class="mb-2 last:mb-0 text-[13px] text-gray-700 leading-relaxed">')
     .replace(/$/, "</p>");
 }
 
-// ─── Suggestions ─────────────────────────────────────────────────
-
-const SUGGESTIONS: string[] = [
-  "What was today's total revenue?",
-  "Which rooms are currently occupied?",
-  "Revenue breakdown for this month",
-  "Top selling menu items"
+const SUGGESTIONS = [
+  { icon: TrendingUp,       text: "What was today's total revenue?" },
+  { icon: BedDouble,        text: "Which rooms are currently occupied?" },
+  { icon: UtensilsCrossed,  text: "Top selling menu items today" },
+  { icon: CalendarCheck,    text: "Any upcoming banquet bookings?" },
 ];
 
-// ─── Subcomponents ────────────────────────────────────────────────
+// ── Bubbles ──────────────────────────────────────────────────────
 
 function AssistantBubble({ content }: { content: string }) {
   return (
-    <div className="flex items-end gap-2 mb-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center bg-violet-100 text-violet-600 border border-violet-200 shadow-[0_2px_8px_-2px_rgba(139,92,246,0.2)]">
-        <Sparkles size={12} className="fill-violet-600" />
+    <div className="flex items-end gap-2.5 mb-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center bg-linear-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-200">
+        <Sparkles size={13} className="text-white" />
       </div>
       <div
-        className="flex-1 bg-white border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)] rounded-[20px] rounded-bl-sm px-4 py-3 text-[13px] max-w-[calc(100%-32px)] overflow-hidden"
+        className="flex-1 bg-white rounded-[18px] rounded-bl-[4px] px-4 py-3 text-[13px] shadow-[0_2px_16px_-4px_rgba(0,0,0,0.08)] border border-gray-100/80 max-w-[calc(100%-44px)] overflow-hidden"
         dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
       />
     </div>
@@ -111,8 +91,8 @@ function AssistantBubble({ content }: { content: string }) {
 
 function UserBubble({ content }: { content: string }) {
   return (
-    <div className="flex justify-end mb-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="bg-linear-to-br from-indigo-600 to-violet-600 text-white rounded-[20px] rounded-br-sm px-4 py-2.5 text-[14px] leading-snug max-w-[85%] font-medium whitespace-pre-wrap shadow-[0_4px_16px_-4px_rgba(99,102,241,0.4)]">
+    <div className="flex justify-end mb-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="bg-linear-to-br from-violet-600 via-indigo-600 to-blue-600 text-white rounded-[18px] rounded-br-[4px] px-4 py-2.5 text-[14px] leading-relaxed max-w-[82%] font-medium whitespace-pre-wrap shadow-lg shadow-indigo-200/60">
         {content}
       </div>
     </div>
@@ -121,20 +101,20 @@ function UserBubble({ content }: { content: string }) {
 
 function TypingIndicator({ status }: { status: string }) {
   return (
-    <div className="flex items-end gap-2 mb-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center bg-violet-100 text-violet-600 border border-violet-200">
-        <Sparkles size={12} />
+    <div className="flex items-end gap-2.5 mb-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center bg-linear-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-200">
+        <Sparkles size={13} className="text-white" />
       </div>
-      <div className="bg-white border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)] rounded-[20px] rounded-bl-sm px-4 py-3 min-h-[44px] flex items-center gap-2">
+      <div className="bg-white rounded-[18px] rounded-bl-[4px] px-4 py-3 shadow-[0_2px_16px_-4px_rgba(0,0,0,0.08)] border border-gray-100/80 flex items-center gap-2 min-w-[80px]">
         {status ? (
           <span className="text-[10px] font-black uppercase tracking-widest text-violet-400 animate-pulse">{status}</span>
         ) : (
-          <div className="flex gap-1">
+          <div className="flex gap-1 py-0.5">
             {[0, 1, 2].map((i) => (
               <span
                 key={i}
-                className="w-1.5 h-1.5 rounded-full bg-violet-400 inline-block animate-bounce"
-                style={{ animationDelay: `${i * 0.15}s` }}
+                className="w-2 h-2 rounded-full bg-linear-to-b from-violet-400 to-indigo-500 inline-block animate-bounce"
+                style={{ animationDelay: `${i * 0.18}s` }}
               />
             ))}
           </div>
@@ -144,14 +124,13 @@ function TypingIndicator({ status }: { status: string }) {
   );
 }
 
-// ─── Main component ──────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────
 
 export default function AdminAIChatbot({ token, staffRole }: Props) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content:
-        "Hello! I'm your interactive AI agent. I can access live data securely and assist you with anything regarding the hotel.",
+      content: "Namaste! I'm your hotel AI assistant. I fetch **only the data I need** for each question.\n\nAsk me anything about your property.",
     },
   ]);
 
@@ -170,130 +149,105 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
     staffRole === "admin" ? { token } : "skip"
   );
 
-  // Detect exact keyboard height via visualViewport and push content up
   useEffect(() => {
     const onResize = () => {
       if (!window.visualViewport) return;
-      const vvHeight = window.visualViewport.height;
-      const vvOffsetTop = window.visualViewport.offsetTop || 0;
-      const kb = Math.max(0, window.innerHeight - vvHeight - vvOffsetTop);
+      const kb = Math.max(0, window.innerHeight - window.visualViewport.height - (window.visualViewport.offsetTop || 0));
       setKeyboardHeight(kb);
-      if (kb > 0) {
-        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 100);
-      }
+      if (kb > 0) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 80);
     };
-
     window.visualViewport?.addEventListener("resize", onResize);
     window.visualViewport?.addEventListener("scroll", onResize);
     onResize();
-
     return () => {
       window.visualViewport?.removeEventListener("resize", onResize);
       window.visualViewport?.removeEventListener("scroll", onResize);
     };
   }, []);
 
-  // Scroll to bottom effect
   useEffect(() => {
     const t = setTimeout(() => {
-      if (scrollRef.current && bottomRef.current) {
-        scrollRef.current.scrollTo({
-           top: scrollRef.current.scrollHeight,
-           behavior: "smooth"
-        });
-      }
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     }, 50);
     return () => clearTimeout(t);
   }, [messages, loading]);
 
-  const handleSend = useCallback(
-    async (overrideText?: string) => {
-      const text = (overrideText ?? input).trim();
-      if (!text || loading) return;
-
-      setInput("");
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-        textareaRef.current.focus();
-      }
-
-      setMessages((prev) => [...prev, { role: "user", content: text }]);
-      setLoading(true);
-      setFetchStatus("Thinking…");
-
-      try {
-        const { text: reply, toolsUsed } = await sendMessage(
-          token,
-          geminiHistory,
-          text,
-          (status) => setFetchStatus(status)
-        );
-
-        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-        setGeminiHistory((prev) => [
-          ...prev,
-          { role: "user",  parts: [{ text }] },
-          { role: "model", parts: [{ text: reply }] },
-        ]);
-
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Something went wrong.";
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `**System Error:** ${msg}` },
-        ]);
-      } finally {
-        setLoading(false);
-        setFetchStatus("");
-      }
-    },
-    [input, loading, geminiHistory, token]
-  );
+  const handleSend = useCallback(async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
+    if (!text || loading) return;
+    setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.focus();
+    }
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setLoading(true);
+    setFetchStatus("Thinking...");
+    try {
+      const { text: reply } = await sendMessage(token, geminiHistory, text, setFetchStatus);
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      setGeminiHistory((prev) => [
+        ...prev,
+        { role: "user",  parts: [{ text }] },
+        { role: "model", parts: [{ text: reply }] },
+      ]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Something went wrong.";
+      setMessages((prev) => [...prev, { role: "assistant", content: `**System Error:** ${msg}` }]);
+    } finally {
+      setLoading(false);
+      setFetchStatus("");
+    }
+  }, [input, loading, geminiHistory, token]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault(); // Prevent newline
-      // Only send if native submit triggered from enter outside mobile dictation
-      if (!e.nativeEvent.isComposing) {
-         void handleSend();
-      }
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      void handleSend();
     }
   };
 
   if (staffRole !== "admin") return null;
 
   return (
-    <div 
-      className="flex flex-col w-full h-full bg-[#fcfcff] font-sans"
-      style={{ 
+    <div
+      className="flex flex-col w-full h-full font-sans"
+      style={{
+        background: "linear-gradient(160deg, #faf8ff 0%, #f4f1ff 40%, #eef2ff 100%)",
         transform: `translateY(-${keyboardHeight}px)`,
         willChange: "transform",
       }}
     >
-      {/* ── Status bar ── */}
-      <div className="shrink-0 px-5 py-3 border-b border-gray-100 bg-white/80 backdrop-blur-md flex items-center justify-between z-10 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-        <div className="flex items-center gap-2">
-          <div className="relative flex h-2 w-2">
-            <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", stats ? "bg-emerald-500" : "bg-amber-400")} />
-            <span className={cn("relative inline-flex rounded-full h-2 w-2", stats ? "bg-emerald-600" : "bg-amber-500")} />
+      {/* Header */}
+      {/* <div className="shrink-0 px-4 py-3.5 flex items-center justify-between border-b border-white/60 bg-white/70 backdrop-blur-xl">
+        <div className="flex items-center gap-3">
+          <div className="relative w-9 h-9 rounded-2xl bg-linear-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-200">
+            <Sparkles size={16} className="text-white" />
+            <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white shadow-sm">
+              <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-70" />
+            </span>
           </div>
-          <span className="text-[10px] text-gray-500 font-extrabold tracking-widest uppercase">
-            {stats ? 'Online · Live Sync' : 'Reconnecting...'}
-          </span>
+          <div>
+            <p className="text-[13px] font-black text-gray-900 leading-none">SarovarOS</p>
+            <p className="text-[10px] text-emerald-600 font-bold mt-0.5 flex items-center gap-1">
+              <Zap size={9} className="fill-emerald-500" />
+              {stats ? "Live · Real-time data" : "Connecting..."}
+            </p>
+          </div>
         </div>
-        
         {stats && (
-           <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
-             ₹{stats.revenue.today.toLocaleString()} Today
-           </div>
+          <div className="text-right">
+            <p className="text-[10px] text-gray-400 font-semibold">Today</p>
+            <p className="text-[13px] font-black text-violet-700">Rs.{stats.revenue.today.toLocaleString("en-IN")}</p>
+          </div>
         )}
-      </div>
+      </div> */}
 
-      {/* ── Messages (fills remaining space, scrollable) ── */}
-      <div 
-        ref={scrollRef} 
-        className="flex-1 overflow-y-auto px-4 sm:px-6 pt-6 pb-2 scroll-smooth min-h-0"
-        style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+      {/* Messages */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto min-h-0 px-4 pt-5 pb-3"
+        style={{ overscrollBehaviorY: "contain" } as React.CSSProperties}
       >
         {messages.map((msg, i) =>
           msg.role === "assistant" ? (
@@ -303,41 +257,48 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
           )
         )}
         {loading && <TypingIndicator status={fetchStatus} />}
-        
-        {/* Suggestion chips (shown only on first load) */}
-        {messages.length === 1 && (
-          <div className="flex flex-col gap-2 mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-150 fill-mode-both">
-            {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                onClick={() => void handleSend(s)}
-                className="self-start text-[12px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-100/50 rounded-xl px-4 py-2.5 transition-colors active:scale-95 origin-left"
-              >
-                {s}
-              </button>
-            ))}
+
+        {messages.length === 1 && !loading && (
+          <div className="mt-4 space-y-2 animate-in fade-in slide-in-from-bottom-3 duration-500">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 mb-3">Quick actions</p>
+            <div className="grid grid-cols-2 gap-2">
+              {SUGGESTIONS.map(({ icon: Icon, text }) => (
+                <button
+                  key={text}
+                  onClick={() => void handleSend(text)}
+                  className="flex items-start gap-2 text-left px-3 py-2.5 rounded-2xl bg-white/80 border border-white shadow-sm hover:shadow-md hover:bg-violet-50/60 hover:border-violet-100 transition-all duration-200 active:scale-95 group"
+                >
+                  <div className="w-6 h-6 rounded-xl bg-violet-100 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-violet-200 transition-colors">
+                    <Icon size={12} className="text-violet-600" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-gray-600 leading-tight group-hover:text-violet-700 transition-colors">{text}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        <div ref={bottomRef} className="h-4" />
+        <div ref={bottomRef} className="h-2" />
       </div>
 
-      {/* ── Input bar — always pinned at bottom ── */}
-      <div 
-        className="shrink-0 bg-white border-t border-gray-100 pt-3 px-3 sm:px-4 pb-4"
-      >
-        <div className="relative flex items-end gap-2 bg-gray-50/50 border border-gray-200 rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-violet-500/20 focus-within:border-violet-500/30 transition-all shadow-inner">
+      {/* Input bar */}
+      <div className="shrink-0 px-3 pt-2 pb-2 bg-white/70 backdrop-blur-xl border-t border-white/60">
+        <div className={cn(
+          "flex items-end gap-2 rounded-[22px] px-4 py-1 transition-all duration-200",
+          "bg-white border border-gray-200 shadow-sm",
+          "focus-within:border-violet-300 focus-within:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+        )}>
           <textarea
             ref={textareaRef}
             value={input}
             rows={1}
-            placeholder="Ask anything..."
-            className="flex-1 max-h-[90px] bg-transparent resize-none border-none outline-none text-gray-900 placeholder:text-gray-400 py-2.5 px-4 scrollbar-hide"
-            style={{ fontSize: '16px' }}
+            placeholder="Ask anything about your hotel..."
+            className="flex-1 max-h-[90px] bg-transparent resize-none border-none outline-none text-gray-800 placeholder:text-gray-400 py-2 leading-relaxed scrollbar-hide"
+            style={{ fontSize: "16px" }}
             onChange={(e) => {
               setInput(e.target.value);
               e.currentTarget.style.height = "auto";
-              e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 120) + "px";
+              e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 90) + "px";
             }}
             onKeyDown={handleKeyDown}
           />
@@ -345,16 +306,15 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
             onClick={() => void handleSend()}
             disabled={loading || !input.trim()}
             className={cn(
-              "shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all",
+              "shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 mb-0.5",
               input.trim() && !loading
-                ? "bg-indigo-600 text-white shadow-md hover:bg-indigo-700 active:scale-95"
-                : "bg-gray-100 text-gray-400"
+                ? "bg-linear-to-br from-violet-600 to-indigo-600 text-white shadow-md shadow-indigo-200 active:scale-90"
+                : "bg-gray-100 text-gray-300"
             )}
           >
-            <SendHorizontal size={18} className={cn(input.trim() && !loading && "translate-x-px translate-y-px")} />
+            <SendHorizontal size={16} className={cn(input.trim() && !loading && "translate-x-px")} />
           </button>
         </div>
-        {/* <p className="text-center text-[9px] font-bold text-gray-300 mt-2 uppercase tracking-widest">Powered by Antigravity Agentic Models</p> */}
       </div>
     </div>
   );

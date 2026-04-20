@@ -77,16 +77,31 @@ function Avatar({ name, size = "md", className = "" }: { name: string; size?: "s
 
 // ─── Stat card ────────────────────────────────────────────────────
 
-function StatCard({ icon: Icon, label, value, accent }: { icon: any; label: string; value: string | number; accent: string }) {
+function StatCard({ icon: Icon, label, shortLabel, value, accent }: { icon: any; label: string; shortLabel?: string; value: string | number; accent: string }) {
   return (
-    <div className={`relative overflow-hidden rounded-2xl border p-4 sm:p-5 bg-card ${accent}`}>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
-        <div className="w-8 h-8 rounded-xl bg-background/60 flex items-center justify-center">
-          <Icon size={15} className="text-foreground/60" />
+    <div className={`relative overflow-hidden rounded-2xl border bg-card ${accent}`}>
+      {/* Mobile layout: compact */}
+      <div className="sm:hidden p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-6 h-6 rounded-lg bg-background/70 flex items-center justify-center shrink-0">
+            <Icon size={12} className="text-foreground/60" />
+          </div>
+          <p className="text-[9px] font-bold uppercase tracking-[0.10em] text-muted-foreground leading-tight line-clamp-2">
+            {shortLabel ?? label}
+          </p>
         </div>
+        <p className="text-2xl font-bold text-foreground">{value}</p>
       </div>
-      <p className="text-2xl sm:text-3xl font-bold text-foreground">{value}</p>
+      {/* Desktop layout: spacious */}
+      <div className="hidden sm:block p-5">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+          <div className="w-8 h-8 rounded-xl bg-background/60 flex items-center justify-center">
+            <Icon size={15} className="text-foreground/60" />
+          </div>
+        </div>
+        <p className="text-3xl font-bold text-foreground">{value}</p>
+      </div>
     </div>
   );
 }
@@ -150,6 +165,13 @@ function GuestRow({ guest, onClick }: { guest: any; onClick: () => void }) {
 
 function GuestCard({ guest, onClick }: { guest: any; onClick: () => void }) {
   const tier = tierInfo(guest.totalVisits, guest.totalSpend);
+  // Abbreviate large spend amounts for mobile
+  const shortSpend = (n: number) => {
+    if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
+    if (n >= 100000)  return `₹${(n / 100000).toFixed(1)}L`;
+    if (n >= 1000)    return `₹${(n / 1000).toFixed(0)}K`;
+    return `₹${n}`;
+  };
   return (
     <motion.div
       layout
@@ -157,23 +179,23 @@ function GuestCard({ guest, onClick }: { guest: any; onClick: () => void }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       onClick={onClick}
-      className="flex items-center gap-3 p-4 rounded-2xl border bg-card active:scale-[0.98] transition-transform cursor-pointer shadow-sm"
+      className="flex items-center gap-3 px-3 py-3.5 rounded-2xl border bg-card active:scale-[0.98] transition-transform cursor-pointer shadow-sm"
     >
       <Avatar name={guest.name} size="md" />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-1">
           <p className="font-semibold text-foreground text-sm truncate">{guest.name}</p>
-          <span className="font-bold text-sm text-foreground tabular-nums shrink-0">{inr(guest.totalSpend)}</span>
+          <span className="font-bold text-sm text-foreground tabular-nums shrink-0">{shortSpend(guest.totalSpend)}</span>
         </div>
-        <div className="flex items-center justify-between gap-2 mt-1">
-          <p className="text-[11px] text-muted-foreground font-mono">{guest.phone}</p>
-          <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${tier.text}`}>
+        <div className="flex items-center justify-between gap-1 mt-0.5">
+          <p className="text-[11px] text-muted-foreground font-mono truncate">{guest.phone}</p>
+          <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider shrink-0 ${tier.text}`}>
             <span className={`w-1 h-1 rounded-full ${tier.dot}`} />
             {tier.label} · {guest.totalVisits}v
           </div>
         </div>
       </div>
-      <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+      <ChevronRight size={13} className="text-muted-foreground shrink-0" />
     </motion.div>
   );
 }
@@ -489,14 +511,14 @@ export default function CustomersPage() {
 
       <main className="flex-1 overflow-hidden flex flex-col">
         {/* ── Stats row ── */}
-        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 grid grid-cols-3 gap-3">
-          <StatCard icon={Users}     label="Total Guests"    value={guests.length} accent="border-border/60" />
-          <StatCard icon={TrendingUp} label="Loyal (3+ visits)" value={loyalCount}  accent="border-emerald-200/60" />
-          <StatCard icon={Star}      label="Top Spenders"   value={topSpenders}   accent="border-amber-200/60" />
+        <div className="px-3 sm:px-6 pt-4 sm:pt-6 pb-3 grid grid-cols-3 gap-2 sm:gap-3">
+          <StatCard icon={Users}      label="Total Guests"     shortLabel="Guests" value={guests.length} accent="border-border/60" />
+          <StatCard icon={TrendingUp} label="Loyal (3+ visits)" shortLabel="Loyal"  value={loyalCount}   accent="border-emerald-200/60" />
+          <StatCard icon={Star}       label="Top Spenders"     shortLabel="Top ₹"  value={topSpenders}  accent="border-amber-200/60" />
         </div>
 
         {/* ── Search + sort bar ── */}
-        <div className="px-4 sm:px-6 pb-3 flex gap-2">
+        <div className="px-3 sm:px-6 pb-3 flex gap-2">
           <div className="relative flex-1">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -532,7 +554,7 @@ export default function CustomersPage() {
         </div>
 
         {/* ── Content ── */}
-        <div className="flex-1 overflow-hidden px-4 sm:px-6 pb-4 sm:pb-6">
+        <div className="flex-1 overflow-hidden px-3 sm:px-6 pb-4 sm:pb-6">
 
           {/* Desktop table */}
           <div className="hidden sm:flex flex-col h-full rounded-2xl border bg-card overflow-hidden shadow-sm">
@@ -562,7 +584,7 @@ export default function CustomersPage() {
 
           {/* Mobile card list */}
           <ScrollArea className="sm:hidden h-full">
-            <div className="space-y-2.5 pb-20">
+            <div className="space-y-2 pb-24 px-0.5">
               <AnimatePresence>
                 {filtered.map((guest) => (
                   <GuestCard key={guest._id} guest={guest} onClick={() => setSelectedGuest(guest)} />

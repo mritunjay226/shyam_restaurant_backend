@@ -235,7 +235,7 @@ function AIChatbotButton({ token, staffRole }: { token: string; staffRole: strin
               className="fixed right-0 top-0 z-[100] h-dvh w-full sm:max-w-[480px] flex flex-col shadow-2xl bg-white"
             >
               <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-green-100 shrink-0">
-                <span className="text-xs font-black uppercase tracking-widest text-green-700">AI Assistant</span>
+                <span className="text-xs font-black uppercase tracking-widest text-green-700">Sarovar OS</span>
                 <button
                   onClick={() => setOpen(false)}
                   className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
