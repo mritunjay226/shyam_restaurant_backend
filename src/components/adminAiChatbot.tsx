@@ -331,7 +331,7 @@ export default function AdminAIChatbot({ token, staffRole }: Props) {
             ref={textareaRef}
             value={input}
             rows={1}
-            placeholder="Ask anything about your hotel..."
+            placeholder="Ask anything..."
             className="flex-1 max-h-[120px] bg-transparent resize-none border-none outline-none text-gray-900 placeholder:text-gray-400 py-2.5 px-4 scrollbar-hide"
             style={{ fontSize: '16px' }}
             onChange={(e) => {
