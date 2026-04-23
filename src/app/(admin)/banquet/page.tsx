@@ -282,7 +282,7 @@ export default function BanquetPage() {
                   <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-1.5">
                       <Label className="text-xs font-bold text-gray-700">Event Date</Label>
-                      <Input type="date" value={eventDate} min={new Date().toISOString().split('T')[0]} onChange={e => setEventDate(e.target.value)} className="h-11 rounded-xl" />
+                      <Input type="date" value={eventDate} min={format(new Date(), 'yyyy-MM-dd')} onChange={e => setEventDate(e.target.value)} className="h-11 rounded-xl" />
                     </div>
 
                     <div className="space-y-1.5">

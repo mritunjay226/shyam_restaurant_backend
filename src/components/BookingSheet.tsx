@@ -263,7 +263,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                           <Label className="text-xs font-semibold text-gray-700">Check-in</Label>
                           <DatePicker 
                             date={checkIn ? new Date(checkIn) : undefined} 
-                            setDate={(d) => setCheckIn(d ? d.toISOString().split('T')[0] : '')}
+                            setDate={(d) => setCheckIn(d ? format(d, 'yyyy-MM-dd') : '')}
                             label="Select Check-in"
                             min={new Date()}
                             disabled={disabledDates}
@@ -273,7 +273,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                           <Label className="text-xs font-semibold text-gray-700">Check-out</Label>
                           <DatePicker 
                             date={checkOut ? new Date(checkOut) : undefined} 
-                            setDate={(d) => setCheckOut(d ? d.toISOString().split('T')[0] : '')}
+                            setDate={(d) => setCheckOut(d ? format(d, 'yyyy-MM-dd') : '')}
                             label="Select Check-out"
                             min={checkIn ? new Date(checkIn) : new Date()}
                             disabled={disabledDates}
@@ -416,7 +416,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                             <Label className="text-xs font-semibold text-gray-700">New Check-in</Label>
                             <DatePicker 
                               date={checkIn ? new Date(checkIn) : undefined} 
-                              setDate={(d) => setCheckIn(d ? d.toISOString().split('T')[0] : '')}
+                              setDate={(d) => setCheckIn(d ? format(d, 'yyyy-MM-dd') : '')}
                               label="Check-in Date"
                               min={new Date()}
                               disabled={disabledDates}
@@ -426,7 +426,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                             <Label className="text-xs font-semibold text-gray-700">New Check-out</Label>
                             <DatePicker 
                               date={checkOut ? new Date(checkOut) : undefined} 
-                              setDate={(d) => setCheckOut(d ? d.toISOString().split('T')[0] : '')}
+                              setDate={(d) => setCheckOut(d ? format(d, 'yyyy-MM-dd') : '')}
                               label="Check-out Date"
                               min={checkIn ? new Date(checkIn) : new Date()}
                               disabled={disabledDates}
