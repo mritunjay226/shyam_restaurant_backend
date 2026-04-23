@@ -93,7 +93,7 @@ export function SidebarContent({ isMobile = false }) {
     <div className="flex flex-col h-full bg-white" style={{paddingTop: isElectron ? "36px" : "0px"}}>
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 h-[64px] border-b border-gray-100 shrink-0">
-        <div className="w-9 h-9 rounded-xl bg-[#ffe6c5] flex items-center justify-center text-white font-bold text-sm tracking-wide shrink-0 shadow-sm overflow-hidden">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm tracking-wide shrink-0 shadow-sm overflow-hidden">
         <Image src="/logo.png" alt="logo" width={100} height={100} className="w-full h-full rounded-full object-cover" />
           
         </div>
