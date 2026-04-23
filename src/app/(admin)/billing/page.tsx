@@ -139,7 +139,7 @@ type PrintMode = "thermal" | "normal";
 
 export default function BillingPage() {
   const [activeTab, setActiveTab] = useState<"rooms" | "tables">("rooms");
-  const [printMode, setPrintMode] = useState<PrintMode>("thermal");
+  const [printMode, setPrintMode] = useState<PrintMode>("normal");
   const settings = useQuery(api.settings.getHotelSettings);
 
   const roomGstRate = (settings?.roomGst || 12) / 100;
