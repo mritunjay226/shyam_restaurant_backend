@@ -21,19 +21,19 @@ import { BASE_ROLES } from "./constants/constant";
 
 // ─── Tabs config ────────────────────────────────────────────────────────────
 const TABS = [
-  { id: "general",     label: "General" },
-  { id: "staff",       label: "Staff" },
+  { id: "general", label: "General" },
+  { id: "staff", label: "Staff" },
   { id: "permissions", label: "Permissions", adminOnly: true },
-  { id: "rooms",       label: "Rooms" },
-  { id: "banquets",    label: "Banquets" },
-  { id: "menu",        label: "F&B Menu" },
-  { id: "counters",    label: "Store Counters" },
+  { id: "rooms", label: "Rooms" },
+  { id: "banquets", label: "Banquets" },
+  { id: "menu", label: "F&B Menu" },
+  { id: "counters", label: "Store Counters" },
 ];
 
 const DEFAULT_FORM: GeneralFormData = {
   hotelName: "Sarovar Palace",
   gstin: "09AABCU9603R1ZN",
-  address: "123 Sarovar Avenue, Civil Lines, Prayagraj - 211001",
+  address: "123 Sarovar Avenue, Lukerganj, Prayagraj - 211001",
   email: "admin@sarovarpalace.in",
   phone: "+91 91234 56789",
   roomGst: "12",
@@ -52,15 +52,15 @@ export default function SettingsPage() {
 
   // ── Convex queries / mutations ──────────────────────────────────────────
   const currentSettings = useQuery(api.settings.getHotelSettings);
-  const updateSettings   = useMutation(api.settings.updateHotelSettings);
-  const roleConfigs      = useQuery(api.auth.getRolePermissions) || [];
-  const updateRolePerms  = useMutation(api.auth.updateRolePermissions);
+  const updateSettings = useMutation(api.settings.updateHotelSettings);
+  const roleConfigs = useQuery(api.auth.getRolePermissions) || [];
+  const updateRolePerms = useMutation(api.auth.updateRolePermissions);
 
   // ── Local UI state ──────────────────────────────────────────────────────
-  const [activeTab,  setActiveTab]  = useState("general");
-  const [isSaving,   setIsSaving]   = useState(false);
-  const [saved,      setSaved]      = useState(false);
-  const [formData,   setFormData]   = useState<GeneralFormData>(DEFAULT_FORM);
+  const [activeTab, setActiveTab] = useState("general");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [formData, setFormData] = useState<GeneralFormData>(DEFAULT_FORM);
   const [staffTypes, setStaffTypes] = useState<string[]>([]);
   const [newRoleInput, setNewRoleInput] = useState("");
 
@@ -72,19 +72,19 @@ export default function SettingsPage() {
     if (!currentSettings) return;
     setFormData((prev) => ({
       ...prev,
-      hotelName:              currentSettings.hotelName              || prev.hotelName,
-      gstin:                  currentSettings.gstin                  || prev.gstin,
-      address:                currentSettings.address                || prev.address,
-      email:                  currentSettings.email                  || prev.email,
-      phone:                  currentSettings.phone                  || prev.phone,
-      roomGst:                currentSettings.roomGst?.toString()    || prev.roomGst,
-      foodGst:                currentSettings.foodGst?.toString()    || prev.foodGst,
-      alGst:                  currentSettings.alGst?.toString()      || prev.alGst,
-      autoCheckoutReminders:  currentSettings.autoCheckoutReminders  ?? prev.autoCheckoutReminders,
-      requireIdUpload:        currentSettings.requireIdUpload        ?? prev.requireIdUpload,
-      defaultKitchenTab:      currentSettings.defaultKitchenTab      || "restaurant",
-      defaultBillingTab:      currentSettings.defaultBillingTab      || "rooms",
-      advancePercentage:      currentSettings.advancePercentage?.toString() || prev.advancePercentage,
+      hotelName: currentSettings.hotelName || prev.hotelName,
+      gstin: currentSettings.gstin || prev.gstin,
+      address: currentSettings.address || prev.address,
+      email: currentSettings.email || prev.email,
+      phone: currentSettings.phone || prev.phone,
+      roomGst: currentSettings.roomGst?.toString() || prev.roomGst,
+      foodGst: currentSettings.foodGst?.toString() || prev.foodGst,
+      alGst: currentSettings.alGst?.toString() || prev.alGst,
+      autoCheckoutReminders: currentSettings.autoCheckoutReminders ?? prev.autoCheckoutReminders,
+      requireIdUpload: currentSettings.requireIdUpload ?? prev.requireIdUpload,
+      defaultKitchenTab: currentSettings.defaultKitchenTab || "restaurant",
+      defaultBillingTab: currentSettings.defaultBillingTab || "rooms",
+      advancePercentage: currentSettings.advancePercentage?.toString() || prev.advancePercentage,
     }));
     if (currentSettings.staffTypes) setStaffTypes(currentSettings.staffTypes);
   }, [currentSettings]);
@@ -92,10 +92,10 @@ export default function SettingsPage() {
   useEffect(() => {
     if (roleConfigs.length === 0) {
       setPermissionDraft({
-        admin:     ["/", "/kitchen", "/restaurant", "/cafe", "/billing", "/rooms", "/banquet", "/reports", "/settings"],
-        manager:   ["/", "/kitchen", "/restaurant", "/cafe", "/billing", "/rooms", "/banquet", "/reports"],
+        admin: ["/", "/kitchen", "/restaurant", "/cafe", "/billing", "/rooms", "/banquet", "/reports", "/settings"],
+        manager: ["/", "/kitchen", "/restaurant", "/cafe", "/billing", "/rooms", "/banquet", "/reports"],
         reception: ["/cafe", "/billing", "/rooms"],
-        kitchen:   ["/kitchen"],
+        kitchen: ["/kitchen"],
       });
     } else {
       const draft: Record<string, string[]> = {};
@@ -118,19 +118,19 @@ export default function SettingsPage() {
     setIsSaving(true);
     try {
       await updateSettings({
-        hotelName:             formData.hotelName,
-        gstin:                 formData.gstin,
-        address:               formData.address,
-        email:                 formData.email,
-        phone:                 formData.phone,
-        roomGst:               parseFloat(formData.roomGst) || 0,
-        foodGst:               parseFloat(formData.foodGst) || 0,
-        alGst:                 parseFloat(formData.alGst)   || 0,
+        hotelName: formData.hotelName,
+        gstin: formData.gstin,
+        address: formData.address,
+        email: formData.email,
+        phone: formData.phone,
+        roomGst: parseFloat(formData.roomGst) || 0,
+        foodGst: parseFloat(formData.foodGst) || 0,
+        alGst: parseFloat(formData.alGst) || 0,
         autoCheckoutReminders: formData.autoCheckoutReminders,
-        requireIdUpload:       formData.requireIdUpload,
-        defaultKitchenTab:     formData.defaultKitchenTab,
-        defaultBillingTab:     formData.defaultBillingTab,
-        advancePercentage:     parseFloat(formData.advancePercentage) || 20,
+        requireIdUpload: formData.requireIdUpload,
+        defaultKitchenTab: formData.defaultKitchenTab,
+        defaultBillingTab: formData.defaultBillingTab,
+        advancePercentage: parseFloat(formData.advancePercentage) || 20,
         staffTypes,
       });
       toast.success("Settings saved successfully!");
@@ -218,9 +218,9 @@ export default function SettingsPage() {
               onSave={handleSave}
             />
           )}
-          {activeTab === "rooms"    && <RoomsTab />}
+          {activeTab === "rooms" && <RoomsTab />}
           {activeTab === "banquets" && <BanquetsTab />}
-          {activeTab === "menu"     && <MenuTab />}
+          {activeTab === "menu" && <MenuTab />}
           {activeTab === "staff" && (
             <StaffTab
               token={token}

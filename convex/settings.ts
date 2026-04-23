@@ -58,12 +58,12 @@ export const updateHotelSettings = mutation({
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db.query("hotelSettings").first();
-    
+
     if (!existing) {
       // If it doesn't exist during update, create it with defaults
       return await ctx.db.insert("hotelSettings", {
         hotelName: args.hotelName || "Sarovar Palace",
-        address: args.address || "Sarovar Palace, Civil Lines, Prayagraj",
+        address: args.address || "Sarovar Palace, Lukerganj, Prayagraj",
         phone: args.phone || "+91 91234 56789",
         gstin: args.gstin || "N/A",
         checkInTime: args.checkInTime || "12:00 PM",
@@ -87,7 +87,7 @@ export const syncBranding = mutation({
     const existing = await ctx.db.query("hotelSettings").first();
     const branding = {
       hotelName: "Sarovar Palace",
-      address: "Sarovar Palace, Civil Lines, Prayagraj",
+      address: "Sarovar Palace, Lukerganj, Prayagraj",
       phone: "+91 91234 56789",
       email: "contact@sarovarpalace.com",
       gstin: "09AABCU9603R1ZN",

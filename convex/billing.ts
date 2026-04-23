@@ -385,12 +385,13 @@ export const directCheckoutOrder = mutation({
     paymentMethod: v.string(),
     guestName: v.optional(v.string()),
     isGstBill: v.boolean(),
+    gstin: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     let foodTotal = 0;
     let beverageTotal = 0;
 
-    args.items.forEach((item) => {
+    args.items.forEach((item: { price: number; quantity: number; category: string }) => {
       const itemTotal = item.price * item.quantity;
       if (item.category === "Beverage") beverageTotal += itemTotal;
       else foodTotal += itemTotal;
