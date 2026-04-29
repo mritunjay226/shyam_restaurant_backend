@@ -145,7 +145,7 @@ export default function BillingPage() {
   const roomGstRate = (settings?.roomGst || 12) / 100;
   const foodGstRate = (settings?.foodGst || 5) / 100;
 
-  // no style injection needed — we use window.open() to print
+  // no style injection needed — printReceipt() in src/lib/print.ts handles all CSS
 
   useEffect(() => {
     if (
