@@ -269,6 +269,8 @@ function PrintModal({ billId, onClose, printMode, setPrintMode }: { billId: Id<"
 // Receipt Components
 // ─────────────────────────────────────────────────────────────────────────────
 
+const GOOGLE_REVIEW_URL = "YOUR_GOOGLE_REVIEW_LINK_HERE";
+
 function ThermalReceiptContent({ details, settings }: any) {
   const { bill, roomCharges, tableCharges } = details;
   const now = new Date(bill._creationTime);
@@ -437,6 +439,16 @@ function ThermalReceiptContent({ details, settings }: any) {
         <div style={{ fontWeight: "bold", letterSpacing: "0.06em" }}>Thank you for your visit</div>
         {bill.isGstBill && <div style={{ marginTop: 3, fontSize: 9 }}>This is a computer generated invoice.</div>}
         <div style={{ marginTop: 6, fontSize: 9, letterSpacing: "0.18em" }}>— ✦ —</div>
+        {/* Google Review QR */}
+        <div style={{ marginTop: 8, borderTop: "1px dashed #000", paddingTop: 8 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.1em", marginBottom: 4 }}>ENJOYED YOUR STAY? LEAVE US A REVIEW</div>
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(GOOGLE_REVIEW_URL)}&qzone=1&format=png`}
+            alt="Google Review QR"
+            style={{ width: 70, height: 70, display: "block", margin: "0 auto" }}
+          />
+          <div style={{ fontSize: 7, marginTop: 3, color: "#555" }}>Scan to rate us on Google</div>
+        </div>
         <div style={{ borderTop: "1px solid #000", marginTop: 6 }} />
       </div>
     </div>
@@ -620,6 +632,18 @@ function NormalInvoiceContent({ details, settings }: any) {
               Thank you for choosing <strong style={{ fontStyle: "normal", color: "#000" }}>{hotelName}</strong>.<br />
             </div>
             {bill.isGstBill && <div style={{ marginTop: 8, fontSize: 9, color: "#999", letterSpacing: "0.04em" }}>This is a computer generated tax invoice.</div>}
+            {/* Google Review QR */}
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px dashed #ddd", display: "flex", alignItems: "center", gap: 16 }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(GOOGLE_REVIEW_URL)}&qzone=1&format=png`}
+                alt="Google Review QR"
+                style={{ width: 80, height: 80, flexShrink: 0, display: "block" }}
+              />
+              <div>
+                <div style={{ fontSize: 11, fontWeight: "bold", color: "#000", marginBottom: 3 }}>Enjoyed your stay?</div>
+                <div style={{ fontSize: 10, color: "#555", lineHeight: 1.5 }}>Scan the QR code to leave us<br />a Google review. It helps us grow!</div>
+              </div>
+            </div>
           </div>
         </div>
 

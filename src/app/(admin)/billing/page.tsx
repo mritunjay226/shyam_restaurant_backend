@@ -162,6 +162,7 @@ export default function BillingPage() {
   const [includeFoodGST, setIncludeFoodGST] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [guestGst, setGuestGst] = useState(""); 
+  const [companyName, setCompanyName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [serviceCharge, setServiceCharge] = useState<number>(0);
@@ -421,6 +422,7 @@ export default function BillingPage() {
     foodGstRate,
     outletName,
     guestGst,
+    companyName,
   };
 
   // ── Print handler — uses IPC in Electron, iframe fallback in browser ─────────
@@ -716,9 +718,9 @@ export default function BillingPage() {
 
                   {/* Modifiers */}
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
-                    {/* --- ADD THIS NEW GUEST GSTIN FIELD --- */}
-                    <div className="mb-2 border-b border-gray-100 pb-4">
-                      <Label className="text-sm font-bold text-indigo-900 block mb-2">
+                    {/* Corporate Bill Fields */}
+                    <div className="mb-2 border-b border-gray-100 pb-4 space-y-2">
+                      <Label className="text-sm font-bold text-indigo-900 block">
                         Guest GSTIN <span className="font-normal text-gray-500">(For Corporate Bills)</span>
                       </Label>
                       <input
@@ -729,8 +731,14 @@ export default function BillingPage() {
                         placeholder="e.g. 09XXXXX1234X1ZX"
                         maxLength={15}
                       />
+                      <input
+                        type="text"
+                        className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        placeholder="Company / Organisation name"
+                      />
                     </div>
-                    {/* -------------------------------------- */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label className="text-sm font-bold text-gray-900 block mb-2">
@@ -976,6 +984,8 @@ export default function BillingPage() {
 
 // ─── ThermalReceiptContent — Luxury B&W Thermal ──────────────────────────────
 
+const GOOGLE_REVIEW_URL = "YOUR_GOOGLE_REVIEW_LINK_HERE";
+
 interface ThermalProps {
   settings: any;
   invoiceNumber: string;
@@ -998,6 +1008,7 @@ interface ThermalProps {
   foodGstRate: number;
   outletName: (outlet?: string) => string;
   guestGst?: string;
+  companyName?: string;
 }
 
 function ThermalReceiptContent({
@@ -1022,6 +1033,7 @@ function ThermalReceiptContent({
   foodGstRate,
   outletName,
   guestGst,
+  companyName,
 }: ThermalProps) {
   const now = new Date();
 
@@ -1233,6 +1245,16 @@ function ThermalReceiptContent({
         <div style={{ fontSize: 9 }}>We look forward to welcoming you again</div>
         {includeGST && <div style={{ marginTop: 3, fontSize: 9 }}>This is a computer generated invoice.</div>}
         <div style={{ marginTop: 6, fontSize: 9, letterSpacing: "0.18em" }}>— ✦ —</div>
+        {/* Google Review QR */}
+        <div style={{ marginTop: 8, borderTop: "1px dashed #000", paddingTop: 8 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.1em", marginBottom: 4 }}>ENJOYED YOUR STAY? LEAVE US A REVIEW</div>
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(GOOGLE_REVIEW_URL)}&qzone=1&format=png`}
+            alt="Google Review QR"
+            style={{ width: 70, height: 70, display: "block", margin: "0 auto" }}
+          />
+          <div style={{ fontSize: 7, marginTop: 3, color: "#555" }}>Scan to rate us on Google</div>
+        </div>
         <div style={{ borderTop: "1px solid #000", marginTop: 6 }} />
       </div>
     </div>
@@ -1263,6 +1285,7 @@ function NormalInvoiceContent({
   foodGstRate,
   outletName,
   guestGst,
+  companyName,
 }: ThermalProps) {
   const now = new Date();
 
@@ -1380,6 +1403,11 @@ function NormalInvoiceContent({
           <div style={{ fontSize: 15, fontWeight: "bold", color: "#000", marginBottom: 4, letterSpacing: "0.02em" }}>
             {activeRoomId ? currentRoomCharges?.booking?.guestName || "Guest" : "Walk-in Guest"}
           </div>
+          {companyName && (
+            <div style={{ fontSize: 13, fontWeight: "bold", color: "#000", marginBottom: 2 }}>
+              {companyName}
+            </div>
+          )}
           {guestGst && (
              <div style={{ fontSize: 12, color: "#000", fontWeight: "bold", marginBottom: 2 }}>
                GSTIN: {guestGst}
@@ -1529,6 +1557,18 @@ function NormalInvoiceContent({
                 This is a computer generated tax invoice.
               </div>
             )}
+            {/* Google Review QR */}
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px dashed #ddd", display: "flex", alignItems: "center", gap: 16 }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(GOOGLE_REVIEW_URL)}&qzone=1&format=png`}
+                alt="Google Review QR"
+                style={{ width: 80, height: 80, flexShrink: 0, display: "block" }}
+              />
+              <div>
+                <div style={{ fontSize: 11, fontWeight: "bold", color: "#000", marginBottom: 3 }}>Enjoyed your stay?</div>
+                <div style={{ fontSize: 10, color: "#555", lineHeight: 1.5 }}>Scan the QR code to leave us<br />a Google review. It helps us grow!</div>
+              </div>
+            </div>
           </div>
         </div>
 

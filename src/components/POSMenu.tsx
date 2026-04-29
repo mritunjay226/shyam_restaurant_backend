@@ -199,6 +199,7 @@ function TableBillCard({
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [discount, setDiscount] = useState("");
   const [gstin, setGstin] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
   const subtotal = orders.reduce((sum: number, o: any) => sum + o.subtotal, 0);
@@ -304,12 +305,18 @@ function TableBillCard({
 
           {/* GSTIN (only if GST bill) */}
           {isGstBill && (
-            <div>
-              <Label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 block">GSTIN (Optional)</Label>
+            <div className="space-y-1.5">
+              <Label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block">GSTIN (Optional)</Label>
               <Input
                 value={gstin}
                 onChange={(e) => setGstin(e.target.value)}
                 placeholder="e.g. 07AABCU9603R1ZV"
+                className="h-8 text-xs rounded-xl"
+              />
+              <Input
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Company / Organisation name"
                 className="h-8 text-xs rounded-xl"
               />
             </div>

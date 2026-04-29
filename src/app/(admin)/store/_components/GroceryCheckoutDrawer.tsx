@@ -36,6 +36,7 @@ interface GroceryCheckoutDrawerProps {
     customerPhone?: string;
     isGstBill: boolean;
     gstin?: string;
+    companyName?: string;
   }) => Promise<void>;
 }
 
@@ -52,6 +53,7 @@ export function GroceryCheckoutDrawer({
   const [discount, setDiscount] = useState("");
   const [isGstBill, setIsGstBill] = useState(false);
   const [gstin, setGstin] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [showCustomer, setShowCustomer] = useState(false);
@@ -94,6 +96,7 @@ export function GroceryCheckoutDrawer({
         customerPhone: customerPhone.trim() || undefined,
         isGstBill,
         gstin: gstin.trim() || undefined,
+        companyName: companyName.trim() || undefined,
       });
     } finally {
       setIsSubmitting(false);
@@ -256,12 +259,20 @@ export function GroceryCheckoutDrawer({
               </button>
             </div>
             {isGstBill && (
-              <input
-                value={gstin}
-                onChange={(e) => setGstin(e.target.value)}
-                placeholder="GSTIN (optional)"
-                className="mt-2 w-full h-9 px-3 bg-[#F7F6F3] border border-[#E8E5DF] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#2D6A4F]/20 focus:border-[#2D6A4F]/50 transition-all mono"
-              />
+              <div className="mt-2 space-y-2">
+                <input
+                  value={gstin}
+                  onChange={(e) => setGstin(e.target.value)}
+                  placeholder="GSTIN (optional)"
+                  className="w-full h-9 px-3 bg-[#F7F6F3] border border-[#E8E5DF] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#2D6A4F]/20 focus:border-[#2D6A4F]/50 transition-all mono"
+                />
+                <input
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Company / Organisation name"
+                  className="w-full h-9 px-3 bg-[#F7F6F3] border border-[#E8E5DF] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#2D6A4F]/20 focus:border-[#2D6A4F]/50 transition-all"
+                />
+              </div>
             )}
           </div>
 
