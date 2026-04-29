@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Minus, ArrowRight, Printer, Search, X, UtensilsCrossed, Receipt } from "lucide-react";
+import { Plus, Minus, ArrowRight, Printer, Search, X, UtensilsCrossed, Receipt, ChefHat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -594,7 +594,133 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
 
   const totalItems = currentCart.reduce((acc, o) => acc + o.qty, 0);
   const subtotal = currentCart.reduce((acc, o) => acc + o.qty * o.price, 0);
-  
+
+  // ── Kitchen Slip Print ──────────────────────────────────────────────────────
+  const printKOTSlip = () => {
+    if (currentCart.length === 0) return;
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+    const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const kotSerial = `KOT-${Date.now().toString().slice(-6)}`;
+
+    const itemRowsHtml = currentCart.map((item, idx) => {
+      const isLast = idx === currentCart.length - 1;
+      const courseTag = item.course && item.course !== "Main"
+        ? `<span style="background:#000;color:#fff;font-size:9px;padding:1px 4px;border-radius:2px;margin-left:4px;vertical-align:middle;">${item.course.toUpperCase()}</span>`
+        : "";
+      const noteHtml = item.notes
+        ? `<div style="font-size:11px;color:#444;padding-left:28px;margin-top:1px;font-style:italic;">↳ ${item.notes}</div>`
+        : "";
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:5px 0;${!isLast ? 'border-bottom:1px dotted #ccc;' : ''}">
+          <div style="flex:1;">
+            <span style="font-size:14px;font-weight:900;margin-right:6px;">${item.qty}×</span>
+            <span style="font-size:13px;font-weight:700;">${item.name}</span>${courseTag}
+            ${noteHtml}
+          </div>
+        </div>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>KOT Kitchen Slip</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    width: 302px;
+    padding: 8px 6px 12px 6px;
+    color: #000;
+    background: #fff;
+  }
+  @media print {
+    @page { margin: 0; size: 80mm auto; }
+    body { width: 100%; padding: 4px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div style="text-align:center;margin-bottom:6px;">
+    <div style="font-size:11px;letter-spacing:3px;font-weight:600;color:#555;">── SAROVAR OS ──</div>
+    <div style="font-size:20px;font-weight:900;letter-spacing:1px;margin:2px 0;">KITCHEN ORDER</div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:4px;color:#333;">${title.toUpperCase()}</div>
+  </div>
+
+  <!-- Divider -->
+  <div style="border-top:2px solid #000;margin:6px 0 4px 0;"></div>
+
+  <!-- Table + Serial Row -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+    <div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#666;">TABLE</div>
+      <div style="font-size:22px;font-weight:900;line-height:1.1;">${activeTable}</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#666;">KOT NO.</div>
+      <div style="font-size:13px;font-weight:900;">${kotSerial}</div>
+    </div>
+  </div>
+
+  <!-- Date/Time -->
+  <div style="display:flex;justify-content:space-between;font-size:11px;color:#444;margin-bottom:4px;border-bottom:1px dashed #888;padding-bottom:4px;">
+    <span>${dateStr}</span>
+    <span>${timeStr}</span>
+  </div>
+
+  <!-- Column Headers -->
+  <div style="display:flex;justify-content:space-between;font-size:9px;font-weight:700;letter-spacing:2px;color:#888;padding:3px 0;border-bottom:1px solid #000;">
+    <span>QTY  ITEM</span>
+    <span>OUTLET</span>
+  </div>
+
+  <!-- Items -->
+  <div style="margin:2px 0 4px 0;">${itemRowsHtml}</div>
+
+  <!-- Total Items Count -->
+  <div style="border-top:2px solid #000;padding-top:5px;margin-top:4px;display:flex;justify-content:space-between;font-size:12px;font-weight:900;">
+    <span>TOTAL ITEMS</span>
+    <span>${currentCart.reduce((a, o) => a + o.qty, 0)}</span>
+  </div>
+
+  <!-- Footer -->
+  <div style="border-top:1px dashed #888;margin-top:8px;padding-top:5px;text-align:center;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:#555;">★ KITCHEN COPY — NOT A BILL ★</div>
+    <div style="font-size:9px;color:#999;margin-top:2px;">Please prepare in order received</div>
+  </div>
+
+</body>
+</html>`;
+
+    // Use Electron IPC if available, else fallback to hidden iframe
+    if (typeof window !== "undefined" && (window as any).electronAPI?.print) {
+      (window as any).electronAPI.print(html, true).catch(() => {
+        toast.error("Printer error. Check connection.");
+      });
+    } else {
+      // Browser fallback — hidden iframe
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;";
+      document.body.appendChild(iframe);
+      const iDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (iDoc) {
+        iDoc.open();
+        iDoc.write(html);
+        iDoc.close();
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      }
+      setTimeout(() => document.body.removeChild(iframe), 2000);
+    }
+
+    toast.success(`🖨 Kitchen slip sent for ${activeTable}`);
+  };
+
   // Tax Logic: Detect Beverages vs Food based on category name
   const isBeverage = (catName?: string) => {
     const name = catName?.toLowerCase() || "";
@@ -1024,13 +1150,14 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
                     </p>
                     <p className="text-2xl font-black text-white">₹{grandTotal.toLocaleString()}</p>
                   </div>
+                  {/* Kitchen Slip — prints compact slip, no DB write */}
                   <Button
-                    disabled={isSubmitting}
-                    onClick={handlePrintKOT}
+                    onClick={printKOTSlip}
                     variant="outline"
-                    className="h-10 w-10 rounded-xl bg-white/5 border-white/10 text-white hover:bg-white/15"
+                    title="Print Kitchen Slip"
+                    className="h-10 w-10 rounded-xl bg-amber-500/20 border-amber-400/30 text-amber-400 hover:bg-amber-400/30 hover:text-amber-300 transition-colors"
                   >
-                    <Printer size={16} />
+                    <ChefHat size={16} />
                   </Button>
                 </div>
                 <div className="flex gap-2">
