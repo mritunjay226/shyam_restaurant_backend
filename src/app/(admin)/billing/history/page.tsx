@@ -269,7 +269,7 @@ function PrintModal({ billId, onClose, printMode, setPrintMode }: { billId: Id<"
 // Receipt Components
 // ─────────────────────────────────────────────────────────────────────────────
 
-const GOOGLE_REVIEW_URL = "YOUR_GOOGLE_REVIEW_LINK_HERE";
+const GOOGLE_REVIEW_URL = "https://g.page/r/CRoioQu179CPEBM/review";
 
 function ThermalReceiptContent({ details, settings }: any) {
   const { bill, roomCharges, tableCharges } = details;

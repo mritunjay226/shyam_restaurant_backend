@@ -27,7 +27,7 @@ export default function CafePage() {
 
   return (
     <POSMenu 
-      title="Café"
+      title="Café" 
       items={items}
       categories={uniqueCategories}
       accentColorClass="bg-teal-600 text-white hover:bg-teal-700 shadow-teal-600/20"

@@ -984,7 +984,7 @@ export default function BillingPage() {
 
 // ─── ThermalReceiptContent — Luxury B&W Thermal ──────────────────────────────
 
-const GOOGLE_REVIEW_URL = "YOUR_GOOGLE_REVIEW_LINK_HERE";
+const GOOGLE_REVIEW_URL = "https://g.page/r/CRoioQu179CPEBM/review";
 
 interface ThermalProps {
   settings: any;
