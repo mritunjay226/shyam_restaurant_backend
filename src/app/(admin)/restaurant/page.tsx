@@ -8,27 +8,18 @@ export default function RestaurantPage() {
   const dbItems = useQuery(api.banquetMenu.getMenuItems, {}) || [];
   const dbCategories = useQuery(api.banquetMenu.getCategories, {}) || [];
 
-  const RESTAURANT_CAT_NAMES = [
-    'Other Starters', 'Pasta', 'Pizzeria', 'Garlic Bread', 
-    'Noodles', 'Rice', 'Chinese Main Course', 'Sides', 
-    'Soup Bowls', 'Tandoori Snacks', 'Indian Main Course', 
-    'Indian Breads', 'Salads & Raita'
-  ];
+  // Deduplicate categories by name
+  const uniqueCategories = dbCategories.reduce((acc, current) => {
+    const x = acc.find(item => item.name === current.name);
+    if (!x) return acc.concat([current]);
+    return acc;
+  }, [] as typeof dbCategories);
 
-  // Filter categories that belong to Restaurant and Deduplicate by name
-  const restaurantCategories = dbCategories
-    .filter(c => RESTAURANT_CAT_NAMES.includes(c.name))
-    .reduce((acc, current) => {
-      const x = acc.find(item => item.name === current.name);
-      if (!x) return acc.concat([current]);
-      return acc;
-    }, [] as typeof dbCategories);
+  const validCatIds = new Set(uniqueCategories.map(c => c._id));
 
-  const restCatIds = new Set(restaurantCategories.map(c => c._id));
-
-  // Filter items and inject category name for POSMenu compatibility
+  // All items — inject category name for POSMenu compatibility
   const items = dbItems
-    .filter(item => restCatIds.has(item.categoryId))
+    .filter(item => validCatIds.has(item.categoryId))
     .map(item => ({
       ...item,
       category: dbCategories.find(c => c._id === item.categoryId)?.name || 'Other'
@@ -38,7 +29,7 @@ export default function RestaurantPage() {
     <POSMenu
       title="Restaurant"
       items={items}
-      categories={restaurantCategories}
+      categories={uniqueCategories}
       accentColorClass="bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/20"
       accentBorderClass="border-emerald-200"
       accentTextClass="text-emerald-600"
