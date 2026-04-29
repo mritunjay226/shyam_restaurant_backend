@@ -7,7 +7,7 @@ import {
   LayoutDashboard, DoorOpen, UtensilsCrossed, Coffee,
   PartyPopper, Receipt, BarChart3, Settings,
   LogOut, ChevronRight, Users, CalendarCheck, Wallet,
-  Store
+  Store, History
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -41,6 +41,7 @@ const NAV_GROUPS = [
     label: "Finance",
     items: [
       { href: "/billing", label: "Billing", icon: Receipt },
+      { href: "/billing/history", label: "Invoice History", icon: History },
       { href: "/payroll", label: "Payroll", icon: Wallet },
       { href: "/reports", label: "Reports", icon: BarChart3 },
     ]

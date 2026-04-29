@@ -14,6 +14,9 @@ declare global {
       reload:      () => void;
       isMaximized: () => Promise<boolean>;
       onMaximized: (cb: (val: boolean) => void) => void;
+      /** Delegates to main process to print via a hidden BrowserWindow.
+       *  Falls back to iframe in a normal browser (not present). */
+      print:       (html: string, thermal: boolean) => Promise<void>;
     };
   }
 }

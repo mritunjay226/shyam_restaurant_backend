@@ -447,3 +447,101 @@ export const markBillPaid = mutation({
     return await ctx.db.patch(args.billId, { status: "paid" });
   },
 });
+
+// GET BILL DETAILS
+export const getBillDetails = query({
+  args: { billId: v.id("bills") },
+  handler: async (ctx, args) => {
+    const bill = await ctx.db.get(args.billId);
+    if (!bill) throw new Error("Bill not found");
+
+    let roomCharges: any = null;
+    let tableCharges: any = null;
+
+    if (bill.billType === "room") {
+      const booking = await ctx.db.get(bill.referenceId as any) as any;
+      if (booking) {
+        const room = await ctx.db.get(booking.roomId);
+        
+        // Calculate nights at the time of billing
+        let nights = 1;
+        try {
+          const checkInDate = new Date(booking.checkIn);
+          // If checkOut is populated use it, else use bill creation time
+          const checkOutTime = booking.checkOut ? new Date(booking.checkOut).getTime() : bill._creationTime;
+          nights = Math.floor((checkOutTime - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (nights <= 0 || isNaN(nights)) nights = 1;
+        } catch (e) {
+          nights = 1;
+        }
+
+        const allOrders = await ctx.db
+          .query("orders")
+          .filter(q => q.and(
+            q.eq(q.field("roomId"), booking.roomId),
+            q.eq(q.field("status"), "paid")
+          ))
+          .collect();
+
+        // Include orders paid around the same time as the bill (within 2 minutes)
+        const linkedOrders = allOrders.filter(o => 
+          o._creationTime <= bill._creationTime + 120000 &&
+          o._creationTime >= new Date(booking.checkIn).getTime() - 86400000 // Since check-in (allow 1 day before in case of midnight issues)
+        );
+
+        roomCharges = {
+          room,
+          booking,
+          nights,
+          roomBaseTotal: booking.tariff * nights,
+          extraBedTotal: booking.extraBed ? 500 * nights : 0,
+          linkedOrders,
+        };
+      }
+    } else if (bill.billType === "banquet") {
+       // Just returning the banquet booking is enough as banquet receipts are not complex
+       const booking = await ctx.db.get(bill.referenceId as any) as any;
+       if (booking) {
+         roomCharges = { booking }; 
+       }
+    } else {
+      // Restaurant / Cafe table bill
+      if (bill.referenceId.includes("-")) {
+        const [outlet, tableNumber] = bill.referenceId.split("-");
+        const orders = await ctx.db
+          .query("orders")
+          .withIndex("by_outlet_table", q => q.eq("outlet", outlet).eq("tableNumber", tableNumber))
+          .filter(q => q.eq(q.field("status"), "paid"))
+          .collect();
+          
+        const linkedOrders = orders.filter(o => 
+          o._creationTime <= bill._creationTime + 120000 &&
+          o._creationTime >= bill._creationTime - (24 * 60 * 60 * 1000) // within 24h of bill creation
+        );
+        
+        tableCharges = {
+           outlet,
+           tableNumber,
+           count: linkedOrders.length,
+           orders: linkedOrders,
+        };
+      } else {
+        const order = await ctx.db.get(bill.referenceId as any) as any;
+        if (order) {
+           tableCharges = {
+             outlet: order.outlet,
+             tableNumber: order.tableNumber,
+             count: 1,
+             orders: [order],
+           };
+        }
+      }
+    }
+
+    return {
+      bill,
+      roomCharges,
+      tableCharges
+    };
+  },
+});

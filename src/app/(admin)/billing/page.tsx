@@ -423,84 +423,15 @@ export default function BillingPage() {
     guestGst,
   };
 
-  // ── Print handler — renders into a popup window and prints ──────────────────
-  const handlePrint = () => {
+  // ── Print handler — uses IPC in Electron, iframe fallback in browser ─────────
+  const handlePrint = async () => {
+    const { printReceipt } = await import("@/lib/print");
     const targetId = printMode === "thermal" ? "thermal-receipt" : "normal-receipt";
     const el = document.getElementById(targetId);
     if (!el) return;
-
-    const pageSize = printMode === "thermal"
-      ? `@page { size: 80mm auto; margin: 0; }`
-      : `@page { size: A4; margin: 0; }`;
-
-    const thermalStyles = printMode === "thermal" ? `
-      body {
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 11px;
-        line-height: 1.5;
-        color: #000;
-        background: #fff;
-        padding: 5mm 4mm;
-        width: 80mm;
-        margin: 0;
-      }
-      .thermal-solid-divider { border: none; border-top: 1px solid #000; margin: 5px 0; display: block; }
-      .thermal-dashed-divider { border: none; border-top: 1px dashed #000; margin: 4px 0; display: block; }
-      .thermal-center { text-align: center; }
-      .thermal-right { text-align: right; }
-      .thermal-total-row { font-size: 14px; font-weight: bold; }
-      table { width: 100%; border-collapse: collapse; font-size: 10px; }
-      th, td { padding: 1px 2px; }
-    ` : `
-      body {
-        font-family: 'Georgia', 'Times New Roman', serif;
-        color: #000;
-        background: #fff;
-        margin: 0;
-        padding: 0;
-        width: 210mm;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      img { display: block; max-width: 100%; }
-      table { border-collapse: collapse; }
-    `;
-
-    const popup = window.open("", "_blank", "width=900,height=700");
-    if (!popup) {
-      alert("Please allow popups for this page to enable printing.");
-      return;
-    }
-
-    popup.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Print</title>
-  <style>
-    ${pageSize}
-    * { box-sizing: border-box; }
-    ${thermalStyles}
-  </style>
-</head>
-<body>
-  ${el.innerHTML}
-</body>
-</html>`);
-    popup.document.close();
-
-    // Wait for images then print
-    popup.onload = () => {
-      popup.focus();
-      popup.print();
-      popup.close();
-    };
-
-    // Fallback if onload already fired
-    setTimeout(() => {
-      try { popup.focus(); popup.print(); popup.close(); } catch (_) {}
-    }, 800);
+    await printReceipt(el.innerHTML, printMode === "thermal");
   };
+
 
   return (
     <div className="flex flex-col min-h-full">
