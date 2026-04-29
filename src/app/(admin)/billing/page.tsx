@@ -1107,15 +1107,19 @@ function ThermalReceiptContent({
       {activeRoomId && currentRoomCharges ? (
         <>
           {row("Guest", currentRoomCharges.booking.guestName)}
+          {companyName && row("Company", companyName)}
+          {guestGst && row("GSTIN", guestGst)}
           {row("Room", `#${currentRoomCharges.room.roomNumber} (${currentRoomCharges.room.category})`)}
           {row("Check-In", currentRoomCharges.booking.checkIn)}
           {row("Nights", String(currentRoomCharges.nights))}
         </>
       ) : (
         <>
+          {row("Type", "Walk-in")}
+          {companyName && row("Company", companyName)}
+          {guestGst && row("GSTIN", guestGst)}
           {row("Outlet", outletName(currentTableCharges?.outlet) || "—")}
           {row("Table No.", currentTableCharges?.tableNumber || "—")}
-          {row("Type", "Walk-in")}
         </>
       )}
       {row("Payment", paymentMethod.toUpperCase())}

@@ -328,6 +328,8 @@ function ThermalReceiptContent({ details, settings }: any) {
       {bill.billType === "room" && roomCharges ? (
         <>
           {row("Guest", bill.guestName)}
+          {bill.companyName && row("Company", bill.companyName)}
+          {bill.gstin && row("GSTIN", bill.gstin)}
           {roomCharges.room && row("Room", `#${roomCharges.room.roomNumber} (${roomCharges.room.category})`)}
           {roomCharges.booking && row("Check-In", roomCharges.booking.checkIn)}
           {row("Nights", String(roomCharges.nights || 1))}
@@ -335,11 +337,17 @@ function ThermalReceiptContent({ details, settings }: any) {
       ) : tableCharges ? (
         <>
           {row("Guest", bill.guestName || "Walk-in")}
+          {bill.companyName && row("Company", bill.companyName)}
+          {bill.gstin && row("GSTIN", bill.gstin)}
           {row("Outlet", outletName(tableCharges.outlet))}
           {row("Table No.", tableCharges.tableNumber)}
         </>
       ) : (
-        row("Guest", bill.guestName)
+        <>
+          {row("Guest", bill.guestName)}
+          {bill.companyName && row("Company", bill.companyName)}
+          {bill.gstin && row("GSTIN", bill.gstin)}
+        </>
       )}
       {row("Payment", (bill.paymentMethod || "UNKNOWN").toUpperCase())}
 
@@ -544,6 +552,7 @@ function NormalInvoiceContent({ details, settings }: any) {
         <div style={{ padding: "20px 28px 20px 48px", borderRight: "1px solid #ddd" }}>
           <div style={{ fontSize: 8.5, fontWeight: "bold", letterSpacing: "0.2em", textTransform: "uppercase", color: "#888", marginBottom: 10 }}>Billed To</div>
           <div style={{ fontSize: 15, fontWeight: "bold", color: "#000", marginBottom: 4, letterSpacing: "0.02em" }}>{bill.guestName || "Guest"}</div>
+          {bill.companyName && <div style={{ fontSize: 13, color: "#444", fontWeight: "600", marginBottom: 2 }}>{bill.companyName}</div>}
           {bill.gstin && <div style={{ fontSize: 12, color: "#000", fontWeight: "bold", marginBottom: 2 }}>GSTIN: {bill.gstin}</div>}
           <div style={{ marginTop: 12, fontSize: 10, color: "#777", fontStyle: "italic" }}>
             Payment via: <strong style={{ color: "#000", fontStyle: "normal", textTransform: "capitalize" }}>
