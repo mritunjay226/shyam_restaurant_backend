@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { X, Printer, CheckCircle2, ShoppingBag } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { printReceipt } from "@/lib/print";
 
 interface GroceryReceiptModalProps {
   saleId: Id<"grocerySales">;
@@ -19,7 +20,8 @@ export function GroceryReceiptModal({ saleId, onClose }: GroceryReceiptModalProp
   if (!sale) return null;
 
   const handlePrint = () => {
-    window.print();
+    const el = document.getElementById("printable-receipt");
+    if (el) printReceipt(el.innerHTML, true);
   };
 
   return (
@@ -53,7 +55,7 @@ export function GroceryReceiptModal({ saleId, onClose }: GroceryReceiptModalProp
           {/* ── Receipt Content (Printable Area) ── */}
           <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6 print:p-0 print:bg-white print:border-none" id="printable-receipt">
             <div className="text-center mb-6">
-              <h3 className="text-lg font-black text-gray-900 uppercase">Shyam Supermarket</h3>
+              <h3 className="text-lg font-black text-gray-900 uppercase">SarovarOS Supermarket</h3>
               <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Lucknow Road, Prayagraj</p>
               <div className="h-px bg-dashed border-gray-300 my-4" />
             </div>

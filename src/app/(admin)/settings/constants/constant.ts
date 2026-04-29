@@ -10,6 +10,7 @@ export const ALL_PAGES = [
   { href: "/store", label: "Store" },
   { href: "/banquet", label: "Banquet & Events" },
   { href: "/billing", label: "Billing" },
+  { href: "/billing/history", label: "Billing/history" },
   { href: "/reports", label: "Reports" },
   { href: "/settings", label: "Settings" },
 ];

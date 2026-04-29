@@ -23,6 +23,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { cn } from "@/lib/utils";
 
 import { StatCard } from "@/components/StatCard";
+import { printReceipt } from "@/lib/print";
 
 const PAYMENT_METHODS = [
   { id: "cash", label: "Cash", icon: Banknote },
@@ -688,7 +689,10 @@ function StaffLedgerSheet({ staff, month, onClose }: { staff: any; month: string
                      </div>
                   </div>
                   <div className="mt-8 flex gap-3 print:hidden">
-                     <Button className="flex-1 h-12 bg-gray-900 text-white rounded-xl font-bold gap-2" onClick={() => window.print()}><Printer size={18} /> Print Record</Button>
+                     <Button className="flex-1 h-12 bg-gray-900 text-white rounded-xl font-bold gap-2" onClick={() => {
+                     const el = document.getElementById("payroll-slip");
+                     if (el) printReceipt(el.innerHTML, false);
+                   }}><Printer size={18} /> Print Record</Button>
                      <Button variant="ghost" className="flex-1 h-12 text-gray-400 font-bold" onClick={() => setViewingSlip(null)}>Close</Button>
                   </div>
                </motion.div>
