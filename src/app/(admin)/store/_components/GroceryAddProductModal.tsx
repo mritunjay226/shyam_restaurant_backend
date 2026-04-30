@@ -331,7 +331,6 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
 
   const handleSubmit = async () => {
     if (!form.name.trim()) { toast.error("Product name required"); return; }
-    if (!form.sellingPrice || parseFloat(form.sellingPrice) <= 0) { toast.error("Enter a valid selling price"); return; }
     if (!form.stockQuantity || parseFloat(form.stockQuantity) < 0) { toast.error("Enter a valid stock quantity"); return; }
 
     setIsSubmitting(true);
@@ -342,7 +341,7 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
         subCategory: form.subCategory.trim() || undefined,
         barcode: form.barcode.trim() || undefined,
         unit: form.unit,
-        sellingPrice: parseFloat(form.sellingPrice),
+        sellingPrice: form.sellingPrice ? parseFloat(form.sellingPrice) : undefined,
         costPrice: form.costPrice ? parseFloat(form.costPrice) : undefined,
         gstRate: parseInt(form.gstRate),
         stockQuantity: parseFloat(form.stockQuantity),
@@ -518,13 +517,13 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
           </Field>
 
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Selling Price (₹) *">
+            <Field label="Selling Price (₹)">
               <input
                 type="number"
                 min={0}
                 value={form.sellingPrice}
                 onChange={(e) => set("sellingPrice", e.target.value)}
-                placeholder="0"
+                placeholder="0 (Optional)"
                 className={INPUT}
               />
             </Field>
@@ -534,7 +533,7 @@ export function GroceryAddProductModal({ categories, onClose }: GroceryAddProduc
                 min={0}
                 value={form.costPrice}
                 onChange={(e) => set("costPrice", e.target.value)}
-                placeholder="0"
+                placeholder="0 (Optional)"
                 className={INPUT}
               />
             </Field>

@@ -78,7 +78,7 @@ export function GroceryCheckoutDrawer({
   // Per-item GST (each product carries its own gstRate)
   const gstTotal = cart.reduce((acc, item) => {
     const rate = item.product.gstRate ?? 0;
-    return acc + item.product.sellingPrice * item.quantity * (rate / 100);
+    return acc + (item.product.sellingPrice || 0) * item.quantity * (rate / 100);
   }, 0);
   const gstOnDiscounted = isGstBill
     ? Math.round(((afterDiscount / subtotal) || 1) * gstTotal * 100) / 100
@@ -151,7 +151,7 @@ export function GroceryCheckoutDrawer({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900 truncate">{item.product.name}</p>
                   <p className="text-[10px] text-gray-400">
-                    ₹{item.product.sellingPrice}/{item.product.unit}
+                    ₹{item.product.sellingPrice ?? 0}/{item.product.unit}
                     {item.product.gstRate ? ` · GST ${item.product.gstRate}%` : ""}
                   </p>
                 </div>
@@ -173,7 +173,7 @@ export function GroceryCheckoutDrawer({
                   </button>
                 </div>
                 <span className="text-sm font-black text-gray-900 w-16 text-right tabular-nums shrink-0">
-                  ₹{(item.product.sellingPrice * item.quantity).toLocaleString()}
+                  ₹{((item.product.sellingPrice || 0) * item.quantity).toLocaleString()}
                 </span>
               </div>
             ))}

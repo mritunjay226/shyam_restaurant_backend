@@ -488,6 +488,7 @@ export default function BillingPage() {
     outletName,
     guestGst,
     companyName,
+    rooms, // Added rooms here
   };
 
   // ── Print handler — uses IPC in Electron, iframe fallback in browser ─────────
@@ -1242,6 +1243,7 @@ interface ThermalProps {
   outletName: (outlet?: string) => string;
   guestGst?: string;
   companyName?: string;
+  rooms?: any[]; // Added rooms here
 }
 
 function ThermalReceiptContent({
@@ -1268,6 +1270,7 @@ function ThermalReceiptContent({
   outletName,
   guestGst,
   companyName,
+  rooms,
 }: ThermalProps) {
   const now = new Date();
 
@@ -1285,8 +1288,8 @@ function ThermalReceiptContent({
     </div>
   );
 
-  const tableRow = (desc: string, qty: string, rate: string, amt: string) => (
-    <tr>
+  const tableRow = (desc: string, qty: string, rate: string, amt: string, key?: any) => (
+    <tr key={key}>
       <td style={{ paddingRight: 4, wordBreak: "break-word", fontSize: 10, paddingTop: 2, paddingBottom: 2 }}>{desc}</td>
       <td style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 10 }}>{qty}</td>
       <td style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 10 }}>{rate}</td>
@@ -1301,7 +1304,9 @@ function ThermalReceiptContent({
 
   const grandTotalPayable = activeRoomId
     ? Math.max(0, (currentRoomCharges?.grandTotal ?? 0) - (currentRoomCharges?.booking?.advance ?? 0))
-    : currentBanquetCharges ? (currentBanquetCharges.totalAmount + (includeGST ? currentBanquetCharges.totalAmount * 0.18 : 0)) : tableGrandTotal;
+    : currentBanquetCharges 
+      ? Math.max(0, (currentBanquetCharges.totalAmount + (includeGST ? currentBanquetCharges.totalAmount * 0.18 : 0)) - (currentBanquetCharges.advance || 0))
+      : tableGrandTotal;
 
   return (
     <div style={{ color: "#000", background: "#fff", fontFamily: "'Courier New', Courier, monospace" }}>
@@ -1421,12 +1426,61 @@ function ThermalReceiptContent({
             </>
           ) : currentBanquetCharges ? (
             <>
-              {tableRow(
-                "Banquet Booking",
-                "1",
-                `${currentBanquetCharges.totalAmount.toLocaleString("en-IN")}`,
-                `${currentBanquetCharges.totalAmount.toLocaleString("en-IN")}`
-              )}
+              {(() => {
+                let extraChargesTotal = 0;
+                const rows = [];
+                
+                if (currentBanquetCharges.extraCharges) {
+                  currentBanquetCharges.extraCharges.forEach((charge: any) => extraChargesTotal += charge.amount);
+                }
+
+                const baseAmount = currentBanquetCharges.totalAmount - extraChargesTotal;
+                
+                rows.push(tableRow(
+                  `${currentBanquetCharges.eventName} (${currentBanquetCharges.eventType})`,
+                  "1",
+                  `${baseAmount.toLocaleString("en-IN")}`,
+                  `${baseAmount.toLocaleString("en-IN")}`,
+                  "banquet-base"
+                ));
+
+                // Add small sub-rows for inclusions
+                if (currentBanquetCharges.includeRooms && currentBanquetCharges.blockedRoomIds?.length) {
+                  rows.push(
+                    <tr key="rooms-header">
+                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444", fontWeight: "bold", textTransform: "uppercase" }}>— Rooms Included ({currentBanquetCharges.blockedRoomIds.length})</td>
+                    </tr>
+                  );
+                }
+                if (currentBanquetCharges.includeRestaurant) {
+                  rows.push(
+                    <tr key="restaurant">
+                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444" }}>— Restaurant: {currentBanquetCharges.restaurantDetails || "Standard"}</td>
+                    </tr>
+                  );
+                }
+                if (currentBanquetCharges.includeCafe) {
+                  rows.push(
+                    <tr key="cafe">
+                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444" }}>— Cafe: {currentBanquetCharges.cafeDetails || "Standard"}</td>
+                    </tr>
+                  );
+                }
+
+                if (currentBanquetCharges.extraCharges) {
+                  currentBanquetCharges.extraCharges.forEach((charge: any, idx: number) => {
+                    rows.push(tableRow(
+                      charge.description,
+                      "1",
+                      charge.amount.toLocaleString("en-IN"),
+                      charge.amount.toLocaleString("en-IN"),
+                      `extra-${idx}`
+                    ));
+                  });
+                }
+
+                return rows;
+              })()}
             </>
           ) : (
             currentTableCharges?.orders?.map((order: any) => (
@@ -1544,6 +1598,7 @@ function NormalInvoiceContent({
   outletName,
   guestGst,
   companyName,
+  rooms,
 }: ThermalProps) {
   const now = new Date();
 
@@ -1586,7 +1641,84 @@ function NormalInvoiceContent({
       });
     });
   } else if (currentBanquetCharges) {
-    lineItems.push({ description: `Banquet Booking — ${currentBanquetCharges.eventName} (${currentBanquetCharges.eventType})`, qty: "1", rate: `₹${currentBanquetCharges.totalAmount.toLocaleString("en-IN")}`, amount: currentBanquetCharges.totalAmount });
+    let extraChargesTotal = 0;
+    if (currentBanquetCharges.extraCharges) {
+      currentBanquetCharges.extraCharges.forEach((charge: any) => {
+        extraChargesTotal += charge.amount;
+        lineItems.push({
+          description: charge.description,
+          qty: "1",
+          rate: `₹${charge.amount.toLocaleString("en-IN")}`,
+          amount: charge.amount
+        });
+      });
+    }
+
+    const hasInclusions = (currentBanquetCharges.includeRooms && currentBanquetCharges.blockedRoomIds?.length) || currentBanquetCharges.includeRestaurant || currentBanquetCharges.includeCafe;
+
+    lineItems.unshift({
+      description: (
+        <div>
+          <div style={{ fontWeight: "600", fontSize: 13, marginBottom: hasInclusions ? 8 : 0 }}>
+            Banquet Event Package: {currentBanquetCharges.eventName} ({currentBanquetCharges.eventType})
+          </div>
+          
+          {hasInclusions && (
+            <div style={{ paddingLeft: 12, borderLeft: "2px solid #eee", fontSize: 11, color: "#444" }}>
+              {/* Rooms Breakdown */}
+              {currentBanquetCharges.includeRooms && currentBanquetCharges.blockedRoomIds && currentBanquetCharges.blockedRoomIds.length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontWeight: "bold", color: "#222", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
+                    Rooms
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    {currentBanquetCharges.blockedRoomIds.map((roomId: any) => {
+                      const room = rooms?.find((r: any) => r._id === roomId);
+                      if (!room) return null;
+                      return (
+                        <div key={roomId} style={{ display: "flex", justifyContent: "space-between", maxWidth: 300, paddingLeft: 8 }}>
+                          <span>Room {room.roomNumber} ({room.category})</span>
+                          <span>₹{room.tariff?.toLocaleString("en-IN") || 0}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Restaurant Breakdown */}
+              {currentBanquetCharges.includeRestaurant && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontWeight: "bold", color: "#222", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
+                    Restaurant
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", maxWidth: 300, paddingLeft: 8 }}>
+                    <span>{currentBanquetCharges.restaurantDetails || "Standard Dining"}</span>
+                    <span>Included</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Cafe Breakdown */}
+              {currentBanquetCharges.includeCafe && (
+                <div style={{ marginBottom: 4 }}>
+                  <div style={{ fontWeight: "bold", color: "#222", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
+                    Cafe
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", maxWidth: 300, paddingLeft: 8 }}>
+                    <span>{currentBanquetCharges.cafeDetails || "Standard Service"}</span>
+                    <span>Included</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) as any,
+      qty: "1",
+      rate: `₹${(currentBanquetCharges.totalAmount - extraChargesTotal).toLocaleString("en-IN")}`,
+      amount: currentBanquetCharges.totalAmount - extraChargesTotal
+    });
   }
 
   if (serviceCharge > 0) lineItems.push({ description: "Service Charge", qty: "1", rate: `₹${serviceCharge.toLocaleString("en-IN")}`, amount: serviceCharge });
@@ -1818,10 +1950,10 @@ function NormalInvoiceContent({
             </div>
           )}
 
-          {activeRoomId && currentRoomCharges?.booking?.advance > 0 && (
+          {(activeRoomId ? currentRoomCharges?.booking?.advance : currentBanquetCharges?.advance) > 0 && (
             <div style={{ borderTop: "1px dashed #bbb", paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 11, color: "#777" }}>
               <span>Advance Paid</span>
-              <span style={{ fontFamily: mono }}>₹{currentRoomCharges.booking.advance.toLocaleString("en-IN")}</span>
+              <span style={{ fontFamily: mono }}>₹{(activeRoomId ? currentRoomCharges.booking.advance : currentBanquetCharges.advance).toLocaleString("en-IN")}</span>
             </div>
           )}
 
@@ -1886,7 +2018,7 @@ function NormalInvoiceContent({
           {/* Grand Total box */}
           <div style={{ borderTop: "2px solid #000", marginTop: 4, paddingTop: 14, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <span style={{ fontWeight: "bold", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", color: "#000" }}>
-              Total Payable
+              {currentBanquetCharges ? "Balance Due" : "Total Payable"}
             </span>
             <span style={{ fontWeight: "bold", fontSize: 22, fontFamily: mono, color: "#000", letterSpacing: "0.02em" }}>
               ₹{grandTotalPayable.toLocaleString("en-IN")}

@@ -290,7 +290,7 @@ export default defineSchema({
     subCategory: v.optional(v.string()),
     barcode: v.optional(v.string()),
     unit: v.string(),                        // "kg", "litre", "piece", "packet"
-    sellingPrice: v.number(),
+    sellingPrice: v.optional(v.number()),
     costPrice: v.optional(v.number()),
     gstRate: v.optional(v.number()),         // percentage: 0, 5, 12, 18, 28
     stockQuantity: v.number(),

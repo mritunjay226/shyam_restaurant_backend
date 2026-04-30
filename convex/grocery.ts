@@ -79,7 +79,7 @@ export const addGroceryProduct = mutation({
     subCategory: v.optional(v.string()),
     barcode: v.optional(v.string()),
     unit: v.string(),             // "kg", "litre", "piece", "packet", etc.
-    sellingPrice: v.number(),
+    sellingPrice: v.optional(v.number()),
     costPrice: v.optional(v.number()),
     gstRate: v.optional(v.number()), // percentage e.g. 5, 12, 18
     stockQuantity: v.number(),
@@ -563,7 +563,7 @@ export const syncCartItemByBarcode = mutation({
           cartId: Math.random().toString(36).slice(2),
           productId: product._id,
           name: product.name,
-          price: product.sellingPrice,
+          price: product.sellingPrice ?? 0,
           unit: product.unit,
           quantity: 1,
         }],
@@ -583,7 +583,7 @@ export const syncCartItemByBarcode = mutation({
           cartId: Math.random().toString(36).slice(2),
           productId: product._id,
           name: product.name,
-          price: product.sellingPrice,
+          price: product.sellingPrice ?? 0,
           unit: product.unit,
           quantity: 1,
         });
@@ -648,7 +648,7 @@ export const addProductToActiveCart = mutation({
           cartId: Math.random().toString(36).slice(2),
           productId: product._id,
           name: product.name,
-          price: product.sellingPrice,
+          price: product.sellingPrice ?? 0,
           unit: product.unit,
           quantity: 1,
         }],
@@ -668,7 +668,7 @@ export const addProductToActiveCart = mutation({
           cartId: Math.random().toString(36).slice(2),
           productId: product._id,
           name: product.name,
-          price: product.sellingPrice,
+          price: product.sellingPrice ?? 0,
           unit: product.unit,
           quantity: 1,
         });

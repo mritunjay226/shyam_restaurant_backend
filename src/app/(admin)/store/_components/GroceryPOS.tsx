@@ -33,7 +33,7 @@ export type GroceryProduct = {
   subCategory?: string;
   barcode?: string;
   unit: string;
-  sellingPrice: number;
+  sellingPrice?: number;
   costPrice?: number;
   gstRate?: number;
   stockQuantity: number;
@@ -215,7 +215,7 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
 
   // ── Totals ─────────────────────────────────────────────────────────────────
 
-  const subtotal = cart.reduce((a, i) => a + i.product.sellingPrice * i.quantity, 0);
+  const subtotal = cart.reduce((a, i) => a + (i.product.sellingPrice || 0) * i.quantity, 0);
   const totalItems = cart.reduce((a, i) => a + i.quantity, 0);
 
   // ── Sale submission ────────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ export function GroceryPOS({ products, categories, lowStockProducts }: GroceryPO
             name: i.product.name,
             unit: i.product.unit,
             quantity: i.quantity,
-            sellingPrice: i.product.sellingPrice,
+            sellingPrice: i.product.sellingPrice ?? 0,
             gstRate: i.product.gstRate ?? 0,
           })),
         });
@@ -486,7 +486,7 @@ function GroceryCartSidebar({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-gray-900 truncate">{item.product.name}</p>
                 <p className="text-[10px] text-gray-400 font-medium">
-                  ₹{item.product.sellingPrice} / {item.product.unit}
+                  ₹{item.product.sellingPrice ?? 0} / {item.product.unit}
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
@@ -510,7 +510,7 @@ function GroceryCartSidebar({
                 </button>
               </div>
               <span className="text-sm font-black text-gray-900 w-16 text-right tabular-nums shrink-0">
-                ₹{(item.product.sellingPrice * item.quantity).toLocaleString()}
+                ₹{((item.product.sellingPrice || 0) * item.quantity).toLocaleString()}
               </span>
             </motion.div>
           ))

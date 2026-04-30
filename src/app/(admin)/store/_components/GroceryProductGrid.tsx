@@ -95,7 +95,7 @@ export function GroceryProductGrid({ products, cart, onAdd, search }: GroceryPro
                 <div className="flex items-end justify-between">
                   <div>
                     <span className="text-base font-black text-gray-900">
-                      ₹{product.sellingPrice}
+                      ₹{product.sellingPrice ?? "N/A"}
                     </span>
                     <span className="text-[10px] text-gray-400 font-bold ml-1">/{product.unit}</span>
 

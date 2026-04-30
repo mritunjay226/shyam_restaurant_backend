@@ -208,10 +208,12 @@ export function GroceryInventoryPanel({ products, lowStockProducts }: GroceryInv
                         </div>
                       ) : (
                         <button
-                          onClick={() => { setEditPriceId(product._id); setNewPrice(String(product.sellingPrice)); }}
+                          onClick={() => { setEditPriceId(product._id); setNewPrice(String(product.sellingPrice ?? "")); }}
                           className="group flex items-center gap-1 justify-end ml-auto"
                         >
-                          <span className="text-sm font-black text-gray-900 tabular-nums">₹{product.sellingPrice}</span>
+                          <span className="text-sm font-black text-gray-900 tabular-nums">
+                            {product.sellingPrice ? `₹${product.sellingPrice}` : "Set Price"}
+                          </span>
                           <Edit3 size={10} className="text-gray-300 group-hover:text-[#2D6A4F] transition-colors" />
                         </button>
                       )}

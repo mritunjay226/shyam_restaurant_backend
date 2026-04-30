@@ -16,6 +16,7 @@ export default function InvoiceHistoryPage() {
   const [printMode, setPrintMode] = useState<"thermal" | "normal">("normal");
 
   const bills = useQuery(api.billing.getAllBills) || [];
+  const rooms = useQuery(api.rooms.getAllRooms, {}) || [];
   
   // Memoize and sort bills
   const filteredBills = useMemo(() => {
@@ -136,6 +137,7 @@ export default function InvoiceHistoryPage() {
             onClose={() => setSelectedBillId(null)} 
             printMode={printMode}
             setPrintMode={setPrintMode}
+            rooms={rooms}
           />
         )}
       </AnimatePresence>
@@ -147,7 +149,7 @@ export default function InvoiceHistoryPage() {
 // Print Modal & Logic
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PrintModal({ billId, onClose, printMode, setPrintMode }: { billId: Id<"bills">, onClose: () => void, printMode: "thermal" | "normal", setPrintMode: (m: "thermal"|"normal") => void }) {
+function PrintModal({ billId, onClose, printMode, setPrintMode, rooms }: { billId: Id<"bills">, onClose: () => void, printMode: "thermal" | "normal", setPrintMode: (m: "thermal"|"normal") => void, rooms: any[] }) {
   const details = useQuery(api.billing.getBillDetails, { billId });
   const settings = useQuery(api.settings.getHotelSettings);
 
@@ -233,14 +235,14 @@ function PrintModal({ billId, onClose, printMode, setPrintMode }: { billId: Id<"
                       className="mx-auto border border-dashed border-gray-200 rounded p-3 bg-white"
                       style={{ maxWidth: 320, fontFamily: "'Courier New', monospace", fontSize: 12, lineHeight: 1.5 }}
                     >
-                      <ThermalReceiptContent details={details} settings={settings} />
+                      <ThermalReceiptContent details={details} settings={settings} rooms={rooms} />
                     </div>
                   ) : (
                     <div
                       className="mx-auto bg-white rounded overflow-hidden"
                       style={{ maxWidth: 540, transform: "scale(0.85)", transformOrigin: "top center" }}
                     >
-                      <NormalInvoiceContent details={details} settings={settings} />
+                      <NormalInvoiceContent details={details} settings={settings} rooms={rooms} />
                     </div>
                   )}
                 </div>
@@ -254,10 +256,10 @@ function PrintModal({ billId, onClose, printMode, setPrintMode }: { billId: Id<"
       {details && settings && (
         <div style={{ display: 'none' }}>
           <div id="history-thermal-receipt">
-            <ThermalReceiptContent details={details} settings={settings} />
+            <ThermalReceiptContent details={details} settings={settings} rooms={rooms} />
           </div>
           <div id="history-normal-receipt">
-            <NormalInvoiceContent details={details} settings={settings} />
+            <NormalInvoiceContent details={details} settings={settings} rooms={rooms} />
           </div>
         </div>
       )}
@@ -271,7 +273,7 @@ function PrintModal({ billId, onClose, printMode, setPrintMode }: { billId: Id<"
 
 const GOOGLE_REVIEW_URL = "https://g.page/r/CRoioQu179CPEBM/review";
 
-function ThermalReceiptContent({ details, settings }: any) {
+function ThermalReceiptContent({ details, settings, rooms }: any) {
   const { bill, roomCharges, tableCharges, banquetCharges } = details;
   const now = new Date(bill._creationTime);
 
@@ -285,8 +287,8 @@ function ThermalReceiptContent({ details, settings }: any) {
     </div>
   );
 
-  const tableRow = (desc: string, qty: string, rate: string, amt: string) => (
-    <tr>
+  const tableRow = (desc: string, qty: string, rate: string, amt: string, key?: any) => (
+    <tr key={key}>
       <td style={{ paddingRight: 4, wordBreak: "break-word", fontSize: 10, paddingTop: 2, paddingBottom: 2 }}>{desc}</td>
       <td style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 10 }}>{qty}</td>
       <td style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 10 }}>{rate}</td>
@@ -408,12 +410,61 @@ function ThermalReceiptContent({ details, settings }: any) {
                </Fragment>
             ))
           ) : banquetCharges ? (
-            tableRow(
-              "Banquet Booking",
-              "1",
-              `${(banquetCharges.totalAmount || 0).toLocaleString("en-IN")}`,
-              `${(banquetCharges.totalAmount || 0).toLocaleString("en-IN")}`
-            )
+            (() => {
+                let extraChargesTotal = 0;
+                const rows = [];
+                
+                if (banquetCharges.extraCharges) {
+                  banquetCharges.extraCharges.forEach((charge: any) => extraChargesTotal += (charge.amount || 0));
+                }
+
+                const baseAmount = (banquetCharges.totalAmount || 0) - extraChargesTotal;
+                
+                rows.push(tableRow(
+                  `${banquetCharges.eventName} (${banquetCharges.eventType})`,
+                  "1",
+                  `${baseAmount.toLocaleString("en-IN")}`,
+                  `${baseAmount.toLocaleString("en-IN")}`,
+                  "banquet-base"
+                ));
+
+                // Add small sub-rows for inclusions
+                if (banquetCharges.includeRooms && banquetCharges.blockedRoomIds?.length) {
+                  rows.push(
+                    <tr key="rooms-header">
+                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444", fontWeight: "bold", textTransform: "uppercase" }}>— Rooms Included ({banquetCharges.blockedRoomIds.length})</td>
+                    </tr>
+                  );
+                }
+                if (banquetCharges.includeRestaurant) {
+                  rows.push(
+                    <tr key="restaurant">
+                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444" }}>— Restaurant: {banquetCharges.restaurantDetails || "Standard"}</td>
+                    </tr>
+                  );
+                }
+                if (banquetCharges.includeCafe) {
+                  rows.push(
+                    <tr key="cafe">
+                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444" }}>— Cafe: {banquetCharges.cafeDetails || "Standard"}</td>
+                    </tr>
+                  );
+                }
+
+                if (banquetCharges.extraCharges) {
+                  banquetCharges.extraCharges.forEach((charge: any, idx: number) => {
+                    rows.push(tableRow(
+                      charge.description,
+                      "1",
+                      (charge.amount || 0).toLocaleString("en-IN"),
+                      (charge.amount || 0).toLocaleString("en-IN"),
+                      `extra-${idx}`
+                    ));
+                  });
+                }
+
+                return rows;
+              })()
           ) : (
             tableRow(bill.billType.toUpperCase() + " CHARGES", "1", (bill.subtotal || 0).toString(), (bill.subtotal || 0).toLocaleString("en-IN"))
           )}
@@ -477,7 +528,7 @@ function ThermalReceiptContent({ details, settings }: any) {
   );
 }
 
-function NormalInvoiceContent({ details, settings }: any) {
+function NormalInvoiceContent({ details, settings, rooms }: any) {
   const { bill, roomCharges, tableCharges, banquetCharges } = details;
   const now = new Date(bill._creationTime);
 
@@ -507,7 +558,84 @@ function NormalInvoiceContent({ details, settings }: any) {
       });
     });
   } else if (bill.billType === "banquet" && banquetCharges) {
-    lineItems.push({ description: `Banquet Booking (${banquetCharges.eventName})`, qty: "1", rate: `₹${(banquetCharges.totalAmount || 0).toLocaleString("en-IN")}`, amount: banquetCharges.totalAmount || 0 });
+    let extraChargesTotal = 0;
+    if (banquetCharges.extraCharges) {
+      banquetCharges.extraCharges.forEach((charge: any) => {
+        extraChargesTotal += (charge.amount || 0);
+        lineItems.push({
+          description: charge.description,
+          qty: "1",
+          rate: `₹${(charge.amount || 0).toLocaleString("en-IN")}`,
+          amount: charge.amount || 0
+        });
+      });
+    }
+
+    const hasInclusions = (banquetCharges.includeRooms && banquetCharges.blockedRoomIds?.length) || banquetCharges.includeRestaurant || banquetCharges.includeCafe;
+
+    lineItems.unshift({
+      description: (
+        <div>
+          <div style={{ fontWeight: "600", fontSize: 13, marginBottom: hasInclusions ? 8 : 0 }}>
+            Banquet Event Package: {banquetCharges.eventName} ({banquetCharges.eventType})
+          </div>
+          
+          {hasInclusions && (
+            <div style={{ paddingLeft: 12, borderLeft: "2px solid #eee", fontSize: 11, color: "#444" }}>
+              {/* Rooms Breakdown */}
+              {banquetCharges.includeRooms && banquetCharges.blockedRoomIds && banquetCharges.blockedRoomIds.length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontWeight: "bold", color: "#222", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
+                    Rooms
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    {banquetCharges.blockedRoomIds.map((roomId: any) => {
+                      const room = rooms?.find((r: any) => r._id === roomId);
+                      if (!room) return null;
+                      return (
+                        <div key={roomId} style={{ display: "flex", justifyContent: "space-between", maxWidth: 300, paddingLeft: 8 }}>
+                          <span>Room {room.roomNumber} ({room.category})</span>
+                          <span>₹{room.tariff?.toLocaleString("en-IN") || 0}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Restaurant Breakdown */}
+              {banquetCharges.includeRestaurant && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontWeight: "bold", color: "#222", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
+                    Restaurant
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", maxWidth: 300, paddingLeft: 8 }}>
+                    <span>{banquetCharges.restaurantDetails || "Standard Dining"}</span>
+                    <span>Included</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Cafe Breakdown */}
+              {banquetCharges.includeCafe && (
+                <div style={{ marginBottom: 4 }}>
+                  <div style={{ fontWeight: "bold", color: "#222", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
+                    Cafe
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", maxWidth: 300, paddingLeft: 8 }}>
+                    <span>{banquetCharges.cafeDetails || "Standard Service"}</span>
+                    <span>Included</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) as any,
+      qty: "1",
+      rate: `₹${((banquetCharges.totalAmount || 0) - extraChargesTotal).toLocaleString("en-IN")}`,
+      amount: (banquetCharges.totalAmount || 0) - extraChargesTotal
+    });
   } else if (tableCharges?.orders) {
     tableCharges.orders.forEach((order: any) => {
       order.items?.forEach((item: any) => {
@@ -690,7 +818,7 @@ function NormalInvoiceContent({ details, settings }: any) {
             </tbody>
           </table>
           <div style={{ borderTop: "1px solid #000", marginTop: 6, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ fontSize: 12, fontWeight: "bold", letterSpacing: "0.1em", textTransform: "uppercase" }}>Grand Total</span>
+            <span style={{ fontSize: 12, fontWeight: "bold", letterSpacing: "0.1em", textTransform: "uppercase" }}>{bill.billType === "banquet" ? "Balance Due" : "Grand Total"}</span>
             <span style={{ fontSize: 20, fontWeight: "bold", fontFamily: mono, color: "#000" }}>₹{(bill.totalAmount || 0).toLocaleString("en-IN")}</span>
           </div>
         </div>
