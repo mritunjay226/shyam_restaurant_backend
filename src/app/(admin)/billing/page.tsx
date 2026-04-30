@@ -1743,15 +1743,6 @@ function NormalInvoiceContent({
 
           {/* Left: Logo + Hotel details */}
           <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
-            {/* Logo */}
-            <img
-              src="/logo.png"
-              alt={hotelName}
-              style={{ height: 72, width: "auto", objectFit: "contain", display: "block", filter: "grayscale(100%) contrast(1.2)" }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-            {/* Vertical rule */}
-            <div style={{ width: 1, height: 72, background: "#ccc", flexShrink: 0 }} />
             {/* Hotel info */}
             <div style={{ paddingTop: 4 }}>
               <div style={{ fontSize: 22, fontWeight: "bold", letterSpacing: "0.06em", color: "#000", lineHeight: 1.1, textTransform: "uppercase" }}>

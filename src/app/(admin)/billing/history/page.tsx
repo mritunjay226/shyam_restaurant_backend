@@ -662,8 +662,6 @@ function NormalInvoiceContent({ details, settings, rooms }: any) {
       <div style={{ padding: "28px 48px 22px", borderBottom: "1px solid #000" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
-            <img src="/logo.png" alt={hotelName} style={{ height: 72, width: "auto", objectFit: "contain", filter: "grayscale(100%) contrast(1.2)" }} />
-            <div style={{ width: 1, height: 72, background: "#ccc", flexShrink: 0 }} />
             <div style={{ paddingTop: 4 }}>
               <div style={{ fontSize: 22, fontWeight: "bold", letterSpacing: "0.06em", color: "#000", lineHeight: 1.1, textTransform: "uppercase" }}>{hotelName}</div>
               <div style={{ width: 40, height: 1.5, background: "#000", margin: "7px 0" }} />
