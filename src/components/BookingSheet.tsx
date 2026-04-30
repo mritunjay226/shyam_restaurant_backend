@@ -127,25 +127,39 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   }, [roomBookings]);
 
   const disabledDates = useMemo(() => {
-    const dates: any[] = [{ before: startOfDay(new Date()) }];
+    const dates: any[] = [];
     const now = Date.now();
     const thirtyMinsAgo = now - 30 * 60 * 1000;
+    const todayStr = format(new Date(), "yyyy-MM-dd");
 
     roomBookings.forEach((b) => {
-      const isPending = b.status === "pending";
-      const isStale = isPending && b._creationTime < thirtyMinsAgo;
-      if (b.status !== "cancelled" && b.status !== "checked_out" && !isStale) {
-        try {
-          const start = parseISO(b.checkIn);
-          const end = parseISO(b.checkOut);
-          const days = eachDayOfInterval({ start, end });
-          days.pop();
-          dates.push(...days);
-        } catch (e) {}
+      // Cancelled / checked-out: those dates are always free
+      if (b.status === "cancelled" || b.status === "checked_out") return;
+
+      // Expired pending holds
+      if (b.status === "pending" && b._creationTime < thirtyMinsAgo) return;
+
+      if (b.status === "checked_in") {
+        // Active guest — block the entire stay range
+      } else if (b.status === "confirmed" && b.checkIn > todayStr) {
+        // Future confirmed reservation — block those upcoming dates
+      } else {
+        // Confirmed with checkIn = today or earlier (no-show / banquet block):
+        // treat as stale and don't block the calendar
+        return;
       }
+
+      try {
+        const start = parseISO(b.checkIn);
+        const end = parseISO(b.checkOut);
+        const days = eachDayOfInterval({ start, end });
+        days.pop(); // check-out day is free for new arrivals
+        dates.push(...days);
+      } catch (e) {}
     });
     return dates;
   }, [roomBookings]);
+
 
   const existingGuest = useQuery(
     api.bookings.getGuestByPhone,
@@ -420,7 +434,6 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                             setCheckIn(d ? format(d, "yyyy-MM-dd") : "")
                           }
                           label="Select Check-in"
-                          min={new Date()}
                           disabled={disabledDates}
                         />
                       </div>
@@ -434,7 +447,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                             setCheckOut(d ? format(d, "yyyy-MM-dd") : "")
                           }
                           label="Select Check-out"
-                          min={checkIn ? new Date(checkIn) : new Date()}
+                          min={checkIn ? new Date(checkIn) : undefined}
                           disabled={disabledDates}
                           align="end"
                         />
@@ -537,7 +550,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                   {!isFutureBookingMode ? (
                     <>
                       {/* Guest Identity Card */}
-                      <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl border border-gray-100 overflow-hidden">
+                      <div className="bg-linear-to-br from-gray-50 to-white rounded-2xl border border-gray-100 overflow-hidden">
                         {/* Card header */}
                         <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -769,7 +782,6 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                                 setCheckIn(d ? format(d, "yyyy-MM-dd") : "")
                               }
                               label="Check-in Date"
-                              min={new Date()}
                               disabled={disabledDates}
                             />
                           </div>
@@ -783,9 +795,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                                 setCheckOut(d ? format(d, "yyyy-MM-dd") : "")
                               }
                               label="Check-out Date"
-                              min={
-                                checkIn ? new Date(checkIn) : new Date()
-                              }
+                              min={checkIn ? new Date(checkIn) : undefined}
                               disabled={disabledDates}
                               align="end"
                             />

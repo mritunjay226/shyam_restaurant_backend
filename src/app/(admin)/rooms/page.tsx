@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { format, addDays } from "date-fns";
-import { Plus, Grid, Calendar as CalendarIcon, Filter, Search } from "lucide-react";
+import { format, addDays, subDays, startOfToday, isSameDay } from "date-fns";
+import { Plus, Grid, Calendar as CalendarIcon, Filter, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { RoomCard, RoomViewData } from "@/components/RoomCard";
 import { BookingSheet } from "@/components/BookingSheet";
@@ -20,6 +20,7 @@ export default function RoomsPage() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [view, setView] = useState<"grid" | "calendar">("grid");
   const [search, setSearch] = useState("");
+  const [calendarStartDate, setCalendarStartDate] = useState<Date>(startOfToday());
 
   const rawRooms = useQuery(api.rooms.getAllRooms, {});
   const rawBookings = useQuery(api.bookings.getAllBookings);
@@ -65,7 +66,8 @@ export default function RoomsPage() {
     dirty: rooms.filter(r => r.status === "dirty").length,
   };
 
-  const nextDates = Array.from({ length: 14 }).map((_, i) => addDays(new Date(), i));
+  const calendarDates = Array.from({ length: 14 }).map((_, i) => addDays(calendarStartDate, i));
+  const today = startOfToday();
 
   if (!rawRooms || !rawBookings) {
     return (
@@ -201,31 +203,131 @@ export default function RoomsPage() {
         ) : (
           /* Calendar View */
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            {/* Calendar Navigation Bar */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCalendarStartDate(d => subDays(d, 7))}
+                  className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-600 transition-colors"
+                  title="Previous 7 days"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  onClick={() => setCalendarStartDate(d => subDays(d, 1))}
+                  className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-600 transition-colors"
+                  title="Previous day"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <CalendarIcon size={14} className="text-gray-400 shrink-0" />
+                <input
+                  type="date"
+                  value={format(calendarStartDate, "yyyy-MM-dd")}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const [y, m, d] = e.target.value.split("-").map(Number);
+                      setCalendarStartDate(new Date(y, m - 1, d));
+                    }
+                  }}
+                  className="text-sm font-bold text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-green-700 transition-colors"
+                  style={{ colorScheme: "light" }}
+                />
+                <button
+                  onClick={() => setCalendarStartDate(startOfToday())}
+                  className={cn(
+                    "px-3 py-1 rounded-lg text-xs font-bold transition-all border shrink-0",
+                    isSameDay(calendarStartDate, today)
+                      ? "bg-green-600 text-white border-green-600"
+                      : "bg-white text-green-600 border-green-200 hover:bg-green-50"
+                  )}
+                >
+                  Today
+                </button>
+              </div>
+
+
+
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCalendarStartDate(d => addDays(d, 1))}
+                  className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-600 transition-colors"
+                  title="Next day"
+                >
+                  <ChevronRight size={14} />
+                </button>
+                <button
+                  onClick={() => setCalendarStartDate(d => addDays(d, 7))}
+                  className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-600 transition-colors"
+                  title="Next 7 days"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            </div>
+
             <div className="horizontal-scroll">
               <div className="min-w-[900px]">
+                {/* Date header */}
                 <div className="grid border-b border-gray-100" style={{ gridTemplateColumns: '110px repeat(14, 1fr)' }}>
                   <div className="p-3 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400 flex items-center justify-center border-r border-gray-100">
                     Room
                   </div>
-                  {nextDates.map((date, i) => (
-                    <div key={i} className={cn("p-3 text-center border-r border-gray-100", i === 0 && "bg-green-50")}>
-                      <div className={cn("text-sm font-bold", i === 0 ? "text-green-700" : "text-gray-800")}>
-                        {format(date, "dd")}
-                      </div>
-                      <div className="text-[10px] font-bold text-gray-400 uppercase">{format(date, "eee")}</div>
-                    </div>
-                  ))}
+                  {calendarDates.map((date, i) => {
+                    const isToday = isSameDay(date, today);
+                    const isSelected = isSameDay(date, calendarStartDate);
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => setCalendarStartDate(date)}
+                        className={cn(
+                          "p-3 text-center border-r border-gray-100 transition-colors hover:bg-green-50 cursor-pointer",
+                          isToday && "bg-green-50",
+                          isSelected && !isToday && "bg-indigo-50"
+                        )}
+                      >
+                        <div className={cn(
+                          "text-sm font-bold",
+                          isToday ? "text-green-700" : isSelected ? "text-indigo-700" : "text-gray-800"
+                        )}>
+                          {format(date, "dd")}
+                        </div>
+                        <div className={cn(
+                          "text-[10px] font-bold uppercase",
+                          isToday ? "text-green-500" : isSelected ? "text-indigo-400" : "text-gray-400"
+                        )}>
+                          {format(date, "eee")}
+                        </div>
+                        {isToday && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-500 mx-auto mt-0.5" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
+
+                {/* Room rows */}
                 {rooms.map(room => (
                   <div key={room._id} className="grid border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors" style={{ gridTemplateColumns: '110px repeat(14, 1fr)' }}>
                     <div className="p-3 border-r border-gray-100 flex flex-col justify-center">
                       <span className="text-sm font-bold text-gray-900 tabular-nums">#{room.roomNumber}</span>
                       <span className="text-[10px] text-gray-400 capitalize mt-0.5">{room.category}</span>
                     </div>
-                    {nextDates.map((_, i) => {
+                    {calendarDates.map((date, i) => {
                       const isOccupied = room.status !== "available" && i < (room.nights || 2);
+                      const isToday = isSameDay(date, today);
                       return (
-                        <div key={i} className="p-1 border-r border-gray-100 last:border-0 min-h-[48px]" onClick={() => { setSelectedRoom(room); setIsSheetOpen(true); }}>
+                        <div
+                          key={i}
+                          className={cn(
+                            "p-1 border-r border-gray-100 last:border-0 min-h-[48px]",
+                            isToday && "bg-green-50/60"
+                          )}
+                          onClick={() => { setSelectedRoom(room); setIsSheetOpen(true); }}
+                        >
                           {isOccupied && (
                             <div className="w-full h-full bg-green-100 border border-green-200 rounded-lg flex items-center justify-center cursor-pointer hover:bg-green-200 transition-colors">
                               <span className="text-[10px] font-bold text-green-700 truncate px-1">
@@ -248,3 +350,5 @@ export default function RoomsPage() {
     </div>
   );
 }
+
+

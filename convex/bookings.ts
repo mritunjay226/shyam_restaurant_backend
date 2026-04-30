@@ -137,6 +137,7 @@ export const createBooking = mutation({
   handler: async (ctx, args) => {
     // ── 1. DATE OVERLAP CHECK ──────────────────────────────────────
     // Find all active bookings for this room (not cancelled/checked_out)
+    const today = new Date().toISOString().slice(0, 10);
     const activeBookings = await ctx.db
       .query("bookings")
       .withIndex("by_room", (q) => q.eq("roomId", args.roomId))
@@ -149,6 +150,20 @@ export const createBooking = mutation({
       .collect();
 
     for (const b of activeBookings) {
+      // Mirror frontend rule:
+      // - checked_in → always blocks (active guest in room)
+      // - confirmed with checkIn in the future → blocks (upcoming reservation)
+      // - confirmed with checkIn today or earlier → stale/no-show, skip
+      // - pending → skip (tentative hold, not confirmed)
+      if (b.status === "checked_in") {
+        // active guest — enforce overlap check
+      } else if (b.status === "confirmed" && b.checkIn > today) {
+        // future confirmed reservation — enforce overlap check
+      } else {
+        // stale / no-show / banquet block / pending — don't block
+        continue;
+      }
+
       if (overlaps(args.checkIn, args.checkOut, b.checkIn, b.checkOut)) {
         throw new Error(
           `Room is already booked from ${b.checkIn} to ${b.checkOut} (${b.guestName}). Please choose different dates.`

@@ -215,7 +215,7 @@ export default function BillingPage() {
           count: 0,
           orders: [],
         };
-      acc[key].total += order.totalAmount;
+      acc[key].total += order.subtotal || order.totalAmount;
       acc[key].count += 1;
       acc[key].orders.push(order);
       return acc;
@@ -275,7 +275,7 @@ export default function BillingPage() {
       foodGstTotal = 0;
 
     linkedOrders.forEach((o) => {
-      const orderSubtotal = o.subtotal || 0;
+      const orderSubtotal = o.subtotal || o.totalAmount || 0;
       const orderGst = o.gstAmount || 0;
       if (o.outlet === "restaurant") restaurantTotal += orderSubtotal;
       if (o.outlet === "cafe") cafeTotal += orderSubtotal;
@@ -347,7 +347,7 @@ export default function BillingPage() {
       await generateTableBill({
         outlet,
         tableNumber,
-        isGstBill: includeGST,
+        isGstBill: includeFoodGST,
         includeFoodGst: includeFoodGST,
         paymentMethod: useSplitPayment ? "split" : paymentMethod,
         discountAmount,
@@ -427,11 +427,11 @@ export default function BillingPage() {
       discountAmount
   );
   const tableCgst =
-    includeGST && includeFoodGST
+    includeFoodGST
       ? Math.round(tableSubtotal * (foodGstRate / 2))
       : 0;
   const tableSgst =
-    includeGST && includeFoodGST
+    includeFoodGST
       ? Math.round(tableSubtotal * (foodGstRate / 2))
       : 0;
   const tableGrandTotal = tableSubtotal + tableCgst + tableSgst;
@@ -899,35 +899,41 @@ export default function BillingPage() {
 
                   {/* GST Toggles */}
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-bold text-gray-900">
-                          Include Room GST
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          Room tax @ {roomGstRate * 100}%
-                        </p>
+                    {activeTab !== "tables" && (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">
+                              {activeTab === "banquets" ? "Include Banquet GST" : "Include Room GST"}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              Tax @ {activeTab === "banquets" ? 18 : roomGstRate * 100}%
+                            </p>
+                          </div>
+                          <Switch
+                            checked={includeGST}
+                            onCheckedChange={setIncludeGST}
+                          />
+                        </div>
+                        {activeTab === "rooms" && <div className="h-px bg-gray-50" />}
+                      </>
+                    )}
+                    {(activeTab === "rooms" || activeTab === "tables") && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">
+                            Include Food GST
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            F&B tax @ {foodGstRate * 100}%
+                          </p>
+                        </div>
+                        <Switch
+                          checked={includeFoodGST}
+                          onCheckedChange={setIncludeFoodGST}
+                        />
                       </div>
-                      <Switch
-                        checked={includeGST}
-                        onCheckedChange={setIncludeGST}
-                      />
-                    </div>
-                    <div className="h-px bg-gray-50" />
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-bold text-gray-900">
-                          Include Food GST
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          F&B tax @ {foodGstRate * 100}%
-                        </p>
-                      </div>
-                      <Switch
-                        checked={includeFoodGST}
-                        onCheckedChange={setIncludeFoodGST}
-                      />
-                    </div>
+                    )}
                   </div>
 
                   {/* Modifiers */}
@@ -1521,10 +1527,33 @@ function ThermalReceiptContent({
 
       {row("Subtotal", `Rs.${(activeRoomId ? currentRoomCharges?.subtotal ?? 0 : currentBanquetCharges ? currentBanquetCharges.totalAmount : tableSubtotal).toLocaleString("en-IN")}`)}
 
-      {includeGST && (
+      {/* Room Bill GST */}
+      {activeRoomId && includeGST && (
         <>
-          {row(`CGST @ ${(roomGstRate / 2) * 100}%`, `Rs.${(activeRoomId ? currentRoomCharges?.cgst ?? 0 : currentBanquetCharges ? currentBanquetCharges.totalAmount * 0.09 : tableCgst).toLocaleString("en-IN")}`)}
-          {row(`SGST @ ${(roomGstRate / 2) * 100}%`, `Rs.${(activeRoomId ? currentRoomCharges?.sgst ?? 0 : currentBanquetCharges ? currentBanquetCharges.totalAmount * 0.09 : tableSgst).toLocaleString("en-IN")}`)}
+          {row(`Room CGST @ ${(roomGstRate / 2) * 100}%`, `Rs.${(currentRoomCharges?.roomCgst ?? 0).toLocaleString("en-IN")}`)}
+          {row(`Room SGST @ ${(roomGstRate / 2) * 100}%`, `Rs.${(currentRoomCharges?.roomSgst ?? 0).toLocaleString("en-IN")}`)}
+        </>
+      )}
+      {activeRoomId && includeFoodGST && (currentRoomCharges?.foodGstTotal || 0) > 0 && (
+        <>
+          {row(`F&B CGST @ ${(foodGstRate / 2) * 100}%`, `Rs.${(currentRoomCharges!.foodGstTotal / 2).toLocaleString("en-IN")}`)}
+          {row(`F&B SGST @ ${(foodGstRate / 2) * 100}%`, `Rs.${(currentRoomCharges!.foodGstTotal / 2).toLocaleString("en-IN")}`)}
+        </>
+      )}
+
+      {/* Banquet Bill GST */}
+      {currentBanquetCharges && includeGST && (
+        <>
+          {row(`CGST @ 9%`, `Rs.${(currentBanquetCharges.totalAmount * 0.09).toLocaleString("en-IN")}`)}
+          {row(`SGST @ 9%`, `Rs.${(currentBanquetCharges.totalAmount * 0.09).toLocaleString("en-IN")}`)}
+        </>
+      )}
+
+      {/* Table Bill GST */}
+      {!activeRoomId && !currentBanquetCharges && includeFoodGST && (
+        <>
+          {row(`CGST @ ${(foodGstRate / 2) * 100}%`, `Rs.${tableCgst.toLocaleString("en-IN")}`)}
+          {row(`SGST @ ${(foodGstRate / 2) * 100}%`, `Rs.${tableSgst.toLocaleString("en-IN")}`)}
         </>
       )}
 
@@ -1991,15 +2020,56 @@ function NormalInvoiceContent({
                 <td style={{ paddingBottom: 8, color: "#555" }}>Subtotal</td>
                 <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{subtotalDisplay.toLocaleString("en-IN")}</td>
               </tr>
-              {includeGST && (
+              {/* Room Bill GST */}
+              {activeRoomId && includeGST && (
                 <>
                   <tr>
-                    <td style={{ paddingBottom: 8, color: "#555" }}>CGST @ {(roomGstRate / 2) * 100}%</td>
-                    <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{cgstDisplay.toLocaleString("en-IN")}</td>
+                    <td style={{ paddingBottom: 8, color: "#555" }}>Room CGST @ {(roomGstRate / 2) * 100}%</td>
+                    <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{(currentRoomCharges?.roomCgst ?? 0).toLocaleString("en-IN")}</td>
                   </tr>
                   <tr>
-                    <td style={{ paddingBottom: 8, color: "#555" }}>SGST @ {(roomGstRate / 2) * 100}%</td>
-                    <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{sgstDisplay.toLocaleString("en-IN")}</td>
+                    <td style={{ paddingBottom: 8, color: "#555" }}>Room SGST @ {(roomGstRate / 2) * 100}%</td>
+                    <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{(currentRoomCharges?.roomSgst ?? 0).toLocaleString("en-IN")}</td>
+                  </tr>
+                </>
+              )}
+              {activeRoomId && includeFoodGST && (currentRoomCharges?.foodGstTotal || 0) > 0 && (
+                <>
+                  <tr>
+                    <td style={{ paddingBottom: 8, color: "#555" }}>F&B CGST @ {(foodGstRate / 2) * 100}%</td>
+                    <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{(currentRoomCharges!.foodGstTotal / 2).toLocaleString("en-IN")}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingBottom: 8, color: "#555" }}>F&B SGST @ {(foodGstRate / 2) * 100}%</td>
+                    <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{(currentRoomCharges!.foodGstTotal / 2).toLocaleString("en-IN")}</td>
+                  </tr>
+                </>
+              )}
+
+              {/* Banquet Bill GST */}
+              {currentBanquetCharges && includeGST && (
+                <>
+                  <tr>
+                    <td style={{ paddingBottom: 8, color: "#555" }}>CGST @ 9%</td>
+                    <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{(currentBanquetCharges.totalAmount * 0.09).toLocaleString("en-IN")}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingBottom: 8, color: "#555" }}>SGST @ 9%</td>
+                    <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{(currentBanquetCharges.totalAmount * 0.09).toLocaleString("en-IN")}</td>
+                  </tr>
+                </>
+              )}
+
+              {/* Table Bill GST */}
+              {!activeRoomId && !currentBanquetCharges && includeFoodGST && (
+                <>
+                  <tr>
+                    <td style={{ paddingBottom: 8, color: "#555" }}>CGST @ {(foodGstRate / 2) * 100}%</td>
+                    <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{tableCgst.toLocaleString("en-IN")}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingBottom: 8, color: "#555" }}>SGST @ {(foodGstRate / 2) * 100}%</td>
+                    <td style={{ paddingBottom: 8, textAlign: "right", fontFamily: mono, color: "#000" }}>₹{tableSgst.toLocaleString("en-IN")}</td>
                   </tr>
                 </>
               )}
