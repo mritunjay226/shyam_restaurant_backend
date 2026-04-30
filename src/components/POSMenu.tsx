@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
+import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Minus, ArrowRight, Printer, Search, X, UtensilsCrossed, Receipt, ChefHat } from "lucide-react";
+import { Plus, Minus, ArrowRight, Printer, Search, X, UtensilsCrossed, Receipt, ChefHat, Thermometer, FileText, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -182,25 +183,95 @@ function TransferDialog({
   );
 }
 
+// ── Cancel KOT Slip Generator ──
+const generateCancelKOTSlipHTML = (order: any, tableNo: string, outletName: string) => {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  
+  const itemRowsHtml = (order.items || []).map((item: any, idx: number) => {
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:5px 0;">
+        <div style="flex:1;">
+          <span style="font-size:14px;font-weight:900;margin-right:6px;"><del>${item.quantity}×</del></span>
+          <span style="font-size:13px;font-weight:700;"><del>${item.name}</del></span>
+        </div>
+      </div>`;
+  }).join("");
+
+  return `
+  <!-- Header -->
+  <div style="text-align:center;margin-bottom:6px;">
+    <div style="font-size:11px;letter-spacing:3px;font-weight:600;color:#555;">── SAROVAR OS ──</div>
+    <div style="font-size:20px;font-weight:900;letter-spacing:1px;margin:2px 0;color:black;background-color:#eee;padding:2px 0;">CANCELLED KOT</div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:4px;color:#333;">${outletName.toUpperCase()}</div>
+  </div>
+  
+  <!-- Divider -->
+  <div style="border-top:2px solid #000;margin:6px 0 4px 0;"></div>
+  
+  <!-- Table + Serial Row -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+    <div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#666;">TABLE</div>
+      <div style="font-size:22px;font-weight:900;line-height:1.1;">${tableNo}</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#666;">KOT NO.</div>
+      <div style="font-size:13px;font-weight:900;"><del>${order.kotNumber}</del></div>
+    </div>
+  </div>
+  
+  <!-- Date/Time -->
+  <div style="display:flex;justify-content:space-between;font-size:11px;color:#444;margin-bottom:4px;border-bottom:1px dashed #888;padding-bottom:4px;">
+    <span>${dateStr}</span>
+    <span>${timeStr}</span>
+  </div>
+  
+  <!-- Items -->
+  <div style="margin:2px 0 4px 0;">${itemRowsHtml}</div>
+  
+  <!-- Total Items Count -->
+  <div style="border-top:2px solid #000;padding-top:5px;margin-top:4px;display:flex;justify-content:space-between;font-size:12px;font-weight:900;">
+    <span>CANCELLED ITEMS</span>
+    <span>${(order.items || []).reduce((a: any, o: any) => a + o.quantity, 0)}</span>
+  </div>
+  
+  <!-- Footer -->
+  <div style="border-top:1px dashed #888;margin-top:8px;padding-top:5px;text-align:center;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:#555;">★ KITCHEN CANCEL COPY ★</div>
+    <div style="font-size:9px;color:#999;margin-top:2px;">Please stop preparation immediately</div>
+  </div>
+  `;
+};
+
 // ── Individual Table Bill Card ──
 function TableBillCard({
   outlet,
   tableNo,
   orders,
   generateTableBill,
+  settings,
 }: {
   outlet: string;
   tableNo: string;
   orders: any[];
   generateTableBill: any;
+  settings: any;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isGstBill, setIsGstBill] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [discount, setDiscount] = useState("");
+  const [amountPaidInput, setAmountPaidInput] = useState("");
   const [gstin, setGstin] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const [editingKotId, setEditingKotId] = useState<string | null>(null);
+  const [editingItems, setEditingItems] = useState<any[]>([]);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const updateOrderItems = useMutation(api.orders.updateOrderItems);
 
   const subtotal = orders.reduce((sum: number, o: any) => sum + o.subtotal, 0);
   const discountAmt = parseFloat(discount) || 0;
@@ -220,6 +291,7 @@ function TableBillCard({
   const handleConfirmBill = async () => {
     setIsGenerating(true);
     try {
+      const parsedAmountPaid = amountPaidInput.trim() !== "" ? parseFloat(amountPaidInput) : grandTotal;
       await generateTableBill({
         outlet,
         tableNumber: tableNo,
@@ -227,6 +299,7 @@ function TableBillCard({
         isGstBill,
         ...(gstin.trim() && { gstin: gstin.trim() }),
         ...(discountAmt > 0 && { discountAmount: discountAmt }),
+        amountPaid: parsedAmountPaid,
       });
       toast.success(`✅ Bill generated for ${tableNo} · ₹${grandTotal.toLocaleString()}`);
       setIsExpanded(false);
@@ -234,6 +307,61 @@ function TableBillCard({
       toast.error(e.message || "Failed to generate bill");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleUpdateQty = (index: number, delta: number) => {
+    const newItems = [...editingItems];
+    newItems[index].quantity += delta;
+    if (newItems[index].quantity < 0) newItems[index].quantity = 0;
+    setEditingItems(newItems);
+  };
+
+  const handleSaveEdit = async (orderId: string) => {
+    setIsSavingEdit(true);
+    try {
+      const filteredItems = editingItems.filter(i => i.quantity > 0);
+      await updateOrderItems({ orderId: orderId as Id<"orders">, items: filteredItems });
+      toast.success("KOT updated successfully");
+      setEditingKotId(null);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update KOT");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleCancelKOT = async (order: any) => {
+    if (!window.confirm(`Are you sure you want to cancel KOT ${order.kotNumber}?`)) return;
+    try {
+      // 1. Delete from DB (sending empty items array deletes the order)
+      await updateOrderItems({ orderId: order._id as Id<"orders">, items: [] });
+      
+      // 2. Print Cancel Slip
+      const { printReceipt } = await import("@/lib/print");
+      const html = generateCancelKOTSlipHTML(order, tableNo, outlet);
+      await printReceipt(html, true); // true = thermal printing
+      
+      toast.success(`KOT ${order.kotNumber} cancelled and slip printed`);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to cancel KOT");
+    }
+  };
+
+  const detailsPayload = { orders, subtotal, discountAmt, cgst: isGstBill ? cgst : 0, sgst: isGstBill ? sgst : 0, grandTotal, tableNo, outlet };
+
+  const handlePrintProforma = async (mode: 'thermal' | 'normal') => {
+    try {
+      const { printReceipt } = await import("@/lib/print");
+      const targetId = mode === 'thermal' ? `proforma-thermal-${tableNo}` : `proforma-normal-${tableNo}`;
+      const el = document.getElementById(targetId);
+      if (el) {
+        await printReceipt(el.innerHTML, mode === 'thermal');
+      } else {
+        toast.error("Print template not found");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to print");
     }
   };
 
@@ -261,13 +389,72 @@ function TableBillCard({
       </div>
 
       {/* KOT Summary Pills */}
-      <div className="px-4 py-2 space-y-1.5">
-        {orders.map((o: any) => (
-          <div key={o._id} className="flex justify-between items-center text-xs text-gray-500 bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-100">
-            <span className="font-semibold">{o.kotNumber}</span>
-            <span>₹{o.subtotal?.toLocaleString()}</span>
-          </div>
-        ))}
+      <div className="px-4 py-2 space-y-2">
+        {orders.map((o: any) => {
+          if (editingKotId === o._id) {
+            return (
+              <div key={o._id} className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 space-y-2">
+                <div className="flex justify-between items-center text-xs font-bold text-indigo-900 border-b border-indigo-200 pb-2">
+                  <span>Editing {o.kotNumber}</span>
+                  <button onClick={() => setEditingKotId(null)} className="hover:bg-indigo-100 p-1 rounded-full text-indigo-400 hover:text-indigo-900 transition-colors">
+                    <X size={14}/>
+                  </button>
+                </div>
+                {editingItems.map((item, idx) => (
+                  <div key={idx} className="flex justify-between items-center text-xs">
+                    <span className="truncate w-32 flex-1 pr-2">{item.name}</span>
+                    <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg shadow-sm border border-indigo-50">
+                      <button onClick={() => handleUpdateQty(idx, -1)} className="text-gray-400 hover:text-red-500">
+                        {item.quantity === 1 || item.quantity === 0 ? <Trash2 size={12}/> : <Minus size={12}/>}
+                      </button>
+                      <span className="font-bold w-4 text-center">{item.quantity}</span>
+                      <button onClick={() => handleUpdateQty(idx, 1)} className="text-gray-400 hover:text-emerald-500">
+                        <Plus size={12}/>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {editingItems.length === 0 || editingItems.every(i => i.quantity === 0) ? (
+                  <div className="text-[10px] text-red-500 text-center font-semibold pt-1">This KOT will be deleted because it is empty.</div>
+                ) : null}
+                <Button 
+                  onClick={() => handleSaveEdit(o._id)} 
+                  disabled={isSavingEdit}
+                  className="w-full h-8 mt-2 text-[10px] uppercase font-bold tracking-wider bg-indigo-600 hover:bg-indigo-700 rounded-lg" 
+                  size="sm"
+                >
+                  {isSavingEdit ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            );
+          }
+
+          return (
+            <div key={o._id} className="flex justify-between items-center text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-lg border border-gray-100 group transition-colors hover:bg-white hover:border-gray-200 hover:shadow-sm">
+              <span className="font-semibold">{o.kotNumber}</span>
+              <div className="flex items-center gap-3">
+                <span>₹{o.subtotal?.toLocaleString()}</span>
+                <button 
+                  onClick={() => {
+                    setEditingKotId(o._id);
+                    setEditingItems(JSON.parse(JSON.stringify(o.items || [])));
+                  }} 
+                  className="opacity-0 group-hover:opacity-100 text-indigo-500 hover:text-indigo-700 transition-opacity p-1.5 bg-indigo-50 hover:bg-indigo-100 rounded-md"
+                  title="Edit KOT Items"
+                >
+                  <Pencil size={12} />
+                </button>
+                <button 
+                  onClick={() => handleCancelKOT(o)}
+                  className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 transition-opacity p-1.5 bg-red-50 hover:bg-red-100 rounded-md"
+                  title="Cancel KOT"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Bill Preview Panel */}
@@ -357,6 +544,25 @@ function TableBillCard({
             </div>
           </div>
 
+          {/* Amount Paid */}
+          <div>
+            <Label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Amount Paid Today (₹)</Label>
+            <Input
+              type="number"
+              min={0}
+              max={grandTotal}
+              value={amountPaidInput}
+              onChange={(e) => setAmountPaidInput(e.target.value)}
+              placeholder={`₹${grandTotal.toLocaleString()} (Full Amount)`}
+              className="h-8 text-xs rounded-xl border-emerald-200 focus-visible:ring-emerald-500"
+            />
+            {amountPaidInput && parseFloat(amountPaidInput) < grandTotal && (
+              <p className="text-[10px] text-amber-600 font-bold mt-1.5 ml-1">
+                Amount Due: ₹{(grandTotal - parseFloat(amountPaidInput)).toLocaleString()}
+              </p>
+            )}
+          </div>
+
           {/* Bill Breakdown */}
           <div className="bg-gray-50 rounded-xl p-3 space-y-2 text-xs">
             <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3">Bill Summary</p>
@@ -410,15 +616,41 @@ function TableBillCard({
 
       {/* Generate Bill Trigger */}
       {!isExpanded && (
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 space-y-2 mt-2">
           <Button
             onClick={() => setIsExpanded(true)}
-            className="w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-100 transition-colors font-bold h-9 rounded-xl text-xs uppercase mt-2"
+            className="w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-100 transition-colors font-bold h-9 rounded-xl text-xs uppercase"
           >
             Generate Bill
           </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handlePrintProforma('thermal')}
+              className="flex-1 h-9 text-xs font-bold rounded-xl bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 border-gray-200"
+            >
+              <Thermometer size={14} className="mr-1.5" /> Thermal
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handlePrintProforma('normal')}
+              className="flex-1 h-9 text-xs font-bold rounded-xl bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 border-gray-200"
+            >
+              <FileText size={14} className="mr-1.5" /> A4 Bill
+            </Button>
+          </div>
         </div>
       )}
+
+      {/* Hidden Print Targets */}
+      <div className="absolute -top-[9999px] -left-[9999px] invisible opacity-0 pointer-events-none">
+        <div id={`proforma-thermal-${tableNo}`}>
+          <ProformaThermalReceipt details={detailsPayload} settings={settings} />
+        </div>
+        <div id={`proforma-normal-${tableNo}`}>
+          <ProformaNormalInvoice details={detailsPayload} settings={settings} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -427,6 +659,7 @@ function TableBillCard({
 function ActiveOrdersList({ outlet }: { outlet: string }) {
   const activeOrders = useQuery(api.orders.getActiveOrdersByOutlet, { outlet });
   const generateTableBill = useMutation(api.billing.generateTableBill);
+  const settings = useQuery(api.settings.getHotelSettings);
 
   if (activeOrders === undefined) return <p className="text-center text-sm text-gray-400 mt-10">Loading...</p>;
   if (activeOrders.length === 0) return <p className="text-center text-sm text-gray-400 mt-10">No active KOTs running.</p>;
@@ -447,8 +680,257 @@ function ActiveOrdersList({ outlet }: { outlet: string }) {
           tableNo={tableNo}
           orders={orders}
           generateTableBill={generateTableBill}
+          settings={settings}
         />
       ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Proforma Print Components
+// ─────────────────────────────────────────────────────────────────────────────
+const GOOGLE_REVIEW_URL = "https://g.page/r/CRoioQu179CPEBM/review";
+
+function ProformaThermalReceipt({ details, settings }: any) {
+  const { orders, subtotal, discountAmt, cgst, sgst, grandTotal, tableNo, outlet } = details;
+  const now = new Date();
+
+  const solidDivider = () => <div className="thermal-solid-divider" style={{ borderTop: "1px solid #000", margin: "5px 0" }} />;
+  const dashedDivider = () => <div className="thermal-dashed-divider" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />;
+
+  const row = (label: string, value: string, bold = false) => (
+    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: bold ? "bold" : "normal", fontSize: bold ? 12 : 10.5, marginBottom: 2 }}>
+      <span style={{ color: "#000" }}>{label}</span>
+      <span style={{ color: "#000", fontFamily: "'Courier New', monospace" }}>{value}</span>
+    </div>
+  );
+
+  const hotelName = settings?.hotelName || "Hotel Name";
+  const address = settings?.address || "Address";
+  const phone = settings?.phone || "";
+  const gstin = settings?.gstin || "";
+
+  const outletName = (o: string) => o.replace(/shyam-/i, "").replace(/-/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+
+  return (
+    <div style={{ color: "#000", background: "#fff", fontFamily: "'Courier New', Courier, monospace", width: "100%", margin: 0, padding: 0 }}>
+      <div className="thermal-center" style={{ textAlign: "center", marginBottom: 2 }}>
+        <div style={{ borderTop: "2px solid #000", marginBottom: 6 }} />
+        <div style={{ fontSize: 17, fontWeight: "bold", letterSpacing: "0.12em", textTransform: "uppercase" }}>{hotelName}</div>
+        <div style={{ fontSize: 9, letterSpacing: "0.06em", marginTop: 2 }}>─── ✦ ───</div>
+        <div style={{ fontSize: 10, marginTop: 3, letterSpacing: "0.04em" }}>{address}</div>
+        {phone && <div style={{ fontSize: 10 }}>Tel: {phone}</div>}
+        {cgst > 0 && gstin && <div style={{ fontSize: 9, marginTop: 2 }}>GSTIN: {gstin}</div>}
+        <div style={{ borderTop: "2px solid #000", marginTop: 6 }} />
+      </div>
+
+      <div className="thermal-center" style={{ textAlign: "center", fontWeight: "bold", fontSize: 11, letterSpacing: "0.15em", marginTop: 5, marginBottom: 5 }}>
+        ★ PROFORMA ESTIMATE ★
+      </div>
+
+      {solidDivider()}
+      {row("Date & Time", format(now, "dd/MM/yyyy HH:mm"))}
+      {dashedDivider()}
+      {row("Outlet", outletName(outlet))}
+      {row("Table No.", tableNo)}
+      {solidDivider()}
+
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: "bold", fontSize: 10, borderBottom: "1px solid #000" }}>ITEM</th>
+            <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: "bold", fontSize: 10, borderBottom: "1px solid #000" }}>QTY</th>
+            <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: "bold", fontSize: 10, borderBottom: "1px solid #000" }}>RATE</th>
+            <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: "bold", fontSize: 10, borderBottom: "1px solid #000" }}>AMT</th>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((o: any) => (
+             <Fragment key={o._id}>
+               {o.items?.map((item: any, idx: number) => (
+                  <tr key={idx}>
+                    <td style={{ paddingLeft: 6, fontSize: 9, wordBreak: "break-word" }}>{item.name}</td>
+                    <td style={{ textAlign: "right", fontSize: 9, whiteSpace: "nowrap" }}>{item.quantity}</td>
+                    <td style={{ textAlign: "right", fontSize: 9, whiteSpace: "nowrap" }}>{item.price}</td>
+                    <td style={{ textAlign: "right", fontSize: 9, whiteSpace: "nowrap" }}>{(item.quantity * item.price).toLocaleString("en-IN")}</td>
+                  </tr>
+               ))}
+             </Fragment>
+          ))}
+        </tbody>
+      </table>
+
+      {solidDivider()}
+      
+      {row("Subtotal", `Rs.${subtotal.toLocaleString("en-IN")}`)}
+      {discountAmt > 0 && row("Discount", `- Rs.${discountAmt.toLocaleString("en-IN")}`)}
+      {cgst > 0 && (
+        <>
+          {row(`CGST`, `Rs.${cgst.toLocaleString("en-IN")}`)}
+          {row(`SGST`, `Rs.${sgst.toLocaleString("en-IN")}`)}
+        </>
+      )}
+
+      {solidDivider()}
+
+      <div className="thermal-total-row" style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: 14, marginBottom: 2, letterSpacing: "0.04em" }}>
+        <span>ESTIMATE TOTAL</span>
+        <span>Rs.{grandTotal.toLocaleString("en-IN")}</span>
+      </div>
+
+      {solidDivider()}
+
+      <div className="thermal-center" style={{ textAlign: "center", fontSize: 10, marginTop: 6, lineHeight: 1.7 }}>
+        <div style={{ fontWeight: "bold", letterSpacing: "0.06em" }}>Please review before payment</div>
+        <div style={{ marginTop: 6, fontSize: 9, letterSpacing: "0.18em" }}>— ✦ —</div>
+        {/* Google Review QR */}
+        <div style={{ marginTop: 8, borderTop: "1px dashed #000", paddingTop: 8 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.1em", marginBottom: 4 }}>ENJOYED YOUR VISIT? LEAVE US A REVIEW</div>
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(GOOGLE_REVIEW_URL)}&qzone=1&format=png`}
+            alt="Google Review QR"
+            style={{ width: 70, height: 70, display: "block", margin: "0 auto" }}
+          />
+          <div style={{ fontSize: 7, marginTop: 3, color: "#555" }}>Scan to rate us on Google</div>
+        </div>
+        <div style={{ borderTop: "1px solid #000", marginTop: 6 }} />
+      </div>
+    </div>
+  );
+}
+
+function ProformaNormalInvoice({ details, settings }: any) {
+  const { orders, subtotal, discountAmt, cgst, sgst, grandTotal, tableNo, outlet } = details;
+  const now = new Date();
+  
+  const mono = "'Courier New', Courier, monospace";
+  const sans = "'Inter', system-ui, sans-serif";
+
+  const hotelName = settings?.hotelName || "Hotel Name";
+  const address = settings?.address || "Address";
+  const phone = settings?.phone || "";
+  const gstin = settings?.gstin || "";
+  const email = settings?.email || "";
+  const website = settings?.website || "";
+
+  const outletName = (o: string) => o.replace(/shyam-/i, "").replace(/-/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+
+  return (
+    <div style={{ fontFamily: sans, color: "#000", background: "#fff", width: "100%", margin: 0, padding: 0 }}>
+      {/* Header */}
+      <div style={{ padding: "40px 48px", borderBottom: "1px solid #eaeaea", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: "900", letterSpacing: "-0.02em", color: "#111" }}>{hotelName}</div>
+          <div style={{ fontSize: 10, color: "#666", marginTop: 8, lineHeight: 1.5, maxWidth: 220 }}>
+            {address}<br/>
+            {phone && <>Tel: {phone}<br/></>}
+            {email && <>{email}<br/></>}
+            {website && <>{website}</>}
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 28, fontWeight: "100", letterSpacing: "-0.02em", color: "#ccc", textTransform: "uppercase" }}>
+            ESTIMATE
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Date</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "#111", fontFamily: mono }}>{format(now, "dd MMM yyyy")}</div>
+          </div>
+          {cgst > 0 && gstin && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>GSTIN</div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: "#111", fontFamily: mono }}>{gstin}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Details */}
+      <div style={{ padding: "32px 48px", display: "flex", justifyContent: "space-between", background: "#fafafa" }}>
+        <div>
+          <div style={{ fontSize: 10, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, marginBottom: 4 }}>Bill To</div>
+          <div style={{ fontSize: 14, fontWeight: "bold", color: "#111" }}>Walk-in Guest</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 10, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, marginBottom: 4 }}>Service Area</div>
+          <div style={{ fontSize: 14, fontWeight: "bold", color: "#111" }}>{outletName(outlet)} - {tableNo}</div>
+        </div>
+      </div>
+
+      {/* Items */}
+      <div style={{ padding: "32px 48px" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", paddingBottom: 12, borderBottom: "2px solid #000", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "#888", fontWeight: 600 }}>Description</th>
+              <th style={{ textAlign: "center", paddingBottom: 12, borderBottom: "2px solid #000", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "#888", fontWeight: 600, width: "10%" }}>Qty</th>
+              <th style={{ textAlign: "right", paddingBottom: 12, borderBottom: "2px solid #000", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "#888", fontWeight: 600, width: "20%" }}>Rate</th>
+              <th style={{ textAlign: "right", paddingBottom: 12, borderBottom: "2px solid #000", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "#888", fontWeight: 600, width: "20%" }}>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o: any) => (
+              <Fragment key={o._id}>
+                {o.items?.map((item: any, idx: number) => (
+                  <tr key={idx}>
+                    <td style={{ padding: "12px 0", borderBottom: "1px solid #eaeaea", fontSize: 12, color: "#111" }}>{item.name}</td>
+                    <td style={{ padding: "12px 0", borderBottom: "1px solid #eaeaea", fontSize: 12, color: "#555", textAlign: "center" }}>{item.quantity}</td>
+                    <td style={{ padding: "12px 0", borderBottom: "1px solid #eaeaea", fontSize: 12, color: "#555", textAlign: "right", fontFamily: mono }}>{item.price.toLocaleString("en-IN")}</td>
+                    <td style={{ padding: "12px 0", borderBottom: "1px solid #eaeaea", fontSize: 12, color: "#111", textAlign: "right", fontFamily: mono, fontWeight: 500 }}>{(item.quantity * item.price).toLocaleString("en-IN")}</td>
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Footer / Summary */}
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 32 }}>
+          <div style={{ flex: 1, paddingRight: 48 }}>
+            <div style={{ background: "#f5f5f5", padding: "16px", borderRadius: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: "bold", color: "#000", marginBottom: 3 }}>This is an Estimate</div>
+              <div style={{ fontSize: 10, color: "#555", lineHeight: 1.5 }}>Please review the items before generating the final bill.</div>
+            </div>
+
+            {/* Google Review QR */}
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px dashed #ddd", display: "flex", alignItems: "center", gap: 16 }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(GOOGLE_REVIEW_URL)}&qzone=1&format=png`}
+                alt="Google Review QR"
+                style={{ width: 80, height: 80, flexShrink: 0, display: "block" }}
+              />
+              <div>
+                <div style={{ fontSize: 11, fontWeight: "bold", color: "#000", marginBottom: 3 }}>Enjoyed your visit?</div>
+                <div style={{ fontSize: 10, color: "#555", lineHeight: 1.5 }}>Scan the QR code to leave us<br />a Google review. It helps us grow!</div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ width: 280, background: "#fdfdfd", padding: "22px", border: "1px solid #eaeaea", borderRadius: 8 }}>
+            <div style={{ fontSize: 8.5, fontWeight: "bold", letterSpacing: "0.2em", textTransform: "uppercase", color: "#888", marginBottom: 12, textAlign: "right" }}>Estimate Summary</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <tbody>
+                {[
+                  ["Subtotal", `₹${subtotal.toLocaleString("en-IN")}`],
+                  discountAmt > 0 && ["Discount", `- ₹${discountAmt.toLocaleString("en-IN")}`],
+                  cgst > 0 && ["CGST", `₹${cgst.toLocaleString("en-IN")}`],
+                  cgst > 0 && ["SGST", `₹${sgst.toLocaleString("en-IN")}`],
+                ].filter(Boolean).map((row: any, i) => (
+                  <tr key={i}>
+                    <td style={{ paddingBottom: 6, color: "#555" }}>{row[0]}</td>
+                    <td style={{ paddingBottom: 6, textAlign: "right", fontFamily: mono }}>{row[1]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ borderTop: "1px solid #000", marginTop: 6, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ fontSize: 12, fontWeight: "bold", letterSpacing: "0.1em", textTransform: "uppercase" }}>Total</span>
+              <span style={{ fontSize: 20, fontWeight: "bold", fontFamily: mono, color: "#000" }}>₹{grandTotal.toLocaleString("en-IN")}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1165,6 +1647,7 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
                     className="h-10 w-10 rounded-xl bg-amber-500/20 border-amber-400/30 text-amber-400 hover:bg-amber-400/30 hover:text-amber-300 transition-colors"
                   >
                     <ChefHat size={16} />
+                    
                   </Button>
                 </div>
                 <div className="flex gap-2">

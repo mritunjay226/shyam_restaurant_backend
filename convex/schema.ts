@@ -125,6 +125,22 @@ export default defineSchema({
     balance: v.number(),
     status: v.string(),
     notes: v.optional(v.string()),
+    isFullPropertySellOut: v.optional(v.boolean()),
+    includeRooms: v.optional(v.boolean()),
+    roomDetails: v.optional(v.string()),
+    blockedRoomIds: v.optional(v.array(v.id("rooms"))),
+    includeCafe: v.optional(v.boolean()),
+    cafeDetails: v.optional(v.string()),
+    includeRestaurant: v.optional(v.boolean()),
+    restaurantDetails: v.optional(v.string()),
+    extraCharges: v.optional(
+      v.array(
+        v.object({
+          description: v.string(),
+          amount: v.number(),
+        })
+      )
+    ),
   }).index("by_eventDate", ["eventDate"]),
 
   // FINAL BILLS
@@ -142,7 +158,8 @@ export default defineSchema({
     cgst: v.number(),
     sgst: v.number(),
     totalAmount: v.number(),
-    advancePaid: v.optional(v.number()),   // ← new
+    advancePaid: v.optional(v.number()),
+    amountPaid: v.optional(v.number()),
     amountDue: v.optional(v.number()),
     paymentMethod: v.optional(v.string()),
     splitPayments: v.optional(v.array(v.object({
@@ -153,6 +170,7 @@ export default defineSchema({
     createdAt: v.string(),
   })
     .index("by_createdAt", ["createdAt"])
+    .index("by_status", ["status"])
     .index("by_billType_date", ["billType", "createdAt"]),
 
   // HOTEL SETTINGS

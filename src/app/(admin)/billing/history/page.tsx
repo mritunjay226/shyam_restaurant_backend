@@ -166,7 +166,7 @@ function PrintModal({ billId, onClose, printMode, setPrintMode }: { billId: Id<"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-100 flex items-center justify-center p-4"
         onClick={onClose}
       >
         <motion.div
@@ -272,7 +272,7 @@ function PrintModal({ billId, onClose, printMode, setPrintMode }: { billId: Id<"
 const GOOGLE_REVIEW_URL = "https://g.page/r/CRoioQu179CPEBM/review";
 
 function ThermalReceiptContent({ details, settings }: any) {
-  const { bill, roomCharges, tableCharges } = details;
+  const { bill, roomCharges, tableCharges, banquetCharges } = details;
   const now = new Date(bill._creationTime);
 
   const solidDivider = () => <div className="thermal-solid-divider" style={{ borderTop: "1px solid #000", margin: "5px 0" }} />;
@@ -342,6 +342,13 @@ function ThermalReceiptContent({ details, settings }: any) {
           {row("Outlet", outletName(tableCharges.outlet))}
           {row("Table No.", tableCharges.tableNumber)}
         </>
+      ) : banquetCharges ? (
+        <>
+          {row("Event", `${banquetCharges.eventName} (${banquetCharges.eventType})`)}
+          {row("Guest", banquetCharges.guestName)}
+          {bill.companyName && row("Company", bill.companyName)}
+          {bill.gstin && row("GSTIN", bill.gstin)}
+        </>
       ) : (
         <>
           {row("Guest", bill.guestName)}
@@ -400,19 +407,26 @@ function ThermalReceiptContent({ details, settings }: any) {
                  ))}
                </Fragment>
             ))
+          ) : banquetCharges ? (
+            tableRow(
+              "Banquet Booking",
+              "1",
+              `${(banquetCharges.totalAmount || 0).toLocaleString("en-IN")}`,
+              `${(banquetCharges.totalAmount || 0).toLocaleString("en-IN")}`
+            )
           ) : (
-            tableRow(bill.billType.toUpperCase() + " CHARGES", "1", bill.subtotal.toString(), bill.subtotal.toLocaleString("en-IN"))
+            tableRow(bill.billType.toUpperCase() + " CHARGES", "1", (bill.subtotal || 0).toString(), (bill.subtotal || 0).toLocaleString("en-IN"))
           )}
         </tbody>
       </table>
 
       {solidDivider()}
 
-      {bill.advancePaid > 0 && row("Advance Paid", `- Rs.${bill.advancePaid.toLocaleString("en-IN")}`)}
-      {bill.discountAmount > 0 && row("Discount", `- Rs.${bill.discountAmount.toLocaleString("en-IN")}`)}
-      {bill.serviceCharge > 0 && row("Service Charge", `Rs.${bill.serviceCharge.toLocaleString("en-IN")}`)}
-      {bill.housekeepingCharge > 0 && row("Housekeeping", `Rs.${bill.housekeepingCharge.toLocaleString("en-IN")}`)}
-      {bill.extraCharge > 0 && row("Extra Charges", `Rs.${bill.extraCharge.toLocaleString("en-IN")}`)}
+      {bill.advancePaid > 0 && row("Advance Paid", `- Rs.${(bill.advancePaid || 0).toLocaleString("en-IN")}`)}
+      {bill.discountAmount > 0 && row("Discount", `- Rs.${(bill.discountAmount || 0).toLocaleString("en-IN")}`)}
+      {bill.serviceCharge > 0 && row("Service Charge", `Rs.${(bill.serviceCharge || 0).toLocaleString("en-IN")}`)}
+      {bill.housekeepingCharge > 0 && row("Housekeeping", `Rs.${(bill.housekeepingCharge || 0).toLocaleString("en-IN")}`)}
+      {bill.extraCharge > 0 && row("Extra Charges", `Rs.${(bill.extraCharge || 0).toLocaleString("en-IN")}`)}
 
       {row("Subtotal", `Rs.${(bill.subtotal || 0).toLocaleString("en-IN")}`)}
       
@@ -427,7 +441,7 @@ function ThermalReceiptContent({ details, settings }: any) {
 
       <div className="thermal-total-row" style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: 14, marginBottom: 2, letterSpacing: "0.04em" }}>
         <span>TOTAL</span>
-        <span>Rs.{bill.totalAmount.toLocaleString("en-IN")}</span>
+        <span>Rs.{(bill.totalAmount || 0).toLocaleString("en-IN")}</span>
       </div>
 
       {bill.splitPayments?.length > 0 && (
@@ -464,7 +478,7 @@ function ThermalReceiptContent({ details, settings }: any) {
 }
 
 function NormalInvoiceContent({ details, settings }: any) {
-  const { bill, roomCharges, tableCharges } = details;
+  const { bill, roomCharges, tableCharges, banquetCharges } = details;
   const now = new Date(bill._creationTime);
 
   const hotelName = settings?.hotelName || "Hotel Name";
@@ -489,22 +503,24 @@ function NormalInvoiceContent({ details, settings }: any) {
     }
     roomCharges.linkedOrders?.forEach((order: any) => {
       order.items?.forEach((item: any) => {
-        lineItems.push({ description: `${item.name} (${outletName(order.outlet)})`, qty: String(item.quantity), rate: `₹${item.price.toLocaleString("en-IN")}`, amount: item.quantity * item.price });
+        lineItems.push({ description: `${item.name} (${outletName(order.outlet)})`, qty: String(item.quantity), rate: `₹${(item.price || 0).toLocaleString("en-IN")}`, amount: item.quantity * item.price });
       });
     });
+  } else if (bill.billType === "banquet" && banquetCharges) {
+    lineItems.push({ description: `Banquet Booking (${banquetCharges.eventName})`, qty: "1", rate: `₹${(banquetCharges.totalAmount || 0).toLocaleString("en-IN")}`, amount: banquetCharges.totalAmount || 0 });
   } else if (tableCharges?.orders) {
     tableCharges.orders.forEach((order: any) => {
       order.items?.forEach((item: any) => {
-        lineItems.push({ description: `${item.name} (${outletName(order.outlet)})`, qty: String(item.quantity), rate: `₹${item.price.toLocaleString("en-IN")}`, amount: item.quantity * item.price });
+        lineItems.push({ description: `${item.name} (${outletName(order.outlet)})`, qty: String(item.quantity), rate: `₹${(item.price || 0).toLocaleString("en-IN")}`, amount: item.quantity * item.price });
       });
     });
   } else {
-    lineItems.push({ description: `${bill.billType.toUpperCase()} CHARGES`, qty: "1", rate: `₹${bill.subtotal.toLocaleString("en-IN")}`, amount: bill.subtotal });
+    lineItems.push({ description: `${bill.billType.toUpperCase()} CHARGES`, qty: "1", rate: `₹${(bill.subtotal || 0).toLocaleString("en-IN")}`, amount: bill.subtotal || 0 });
   }
 
-  if (bill.serviceCharge > 0) lineItems.push({ description: "Service Charge", qty: "1", rate: `₹${bill.serviceCharge.toLocaleString("en-IN")}`, amount: bill.serviceCharge });
-  if (bill.housekeepingCharge > 0) lineItems.push({ description: "Housekeeping Charge", qty: "1", rate: `₹${bill.housekeepingCharge.toLocaleString("en-IN")}`, amount: bill.housekeepingCharge });
-  if (bill.extraCharge > 0) lineItems.push({ description: "Miscellaneous Charges", qty: "1", rate: `₹${bill.extraCharge.toLocaleString("en-IN")}`, amount: bill.extraCharge });
+  if (bill.serviceCharge > 0) lineItems.push({ description: "Service Charge", qty: "1", rate: `₹${(bill.serviceCharge || 0).toLocaleString("en-IN")}`, amount: bill.serviceCharge || 0 });
+  if (bill.housekeepingCharge > 0) lineItems.push({ description: "Housekeeping Charge", qty: "1", rate: `₹${(bill.housekeepingCharge || 0).toLocaleString("en-IN")}`, amount: bill.housekeepingCharge || 0 });
+  if (bill.extraCharge > 0) lineItems.push({ description: "Miscellaneous Charges", qty: "1", rate: `₹${(bill.extraCharge || 0).toLocaleString("en-IN")}`, amount: bill.extraCharge || 0 });
 
   const serif = "'Georgia', 'Times New Roman', serif";
   const mono = "'Courier New', Courier, monospace";
@@ -605,7 +621,7 @@ function NormalInvoiceContent({ details, settings }: any) {
                 <td style={{ padding: "11px 12px 11px 0", color: "#000", fontWeight: i < 1 && bill.billType === "room" ? "600" : "normal", lineHeight: 1.4, fontSize: 12 }}>{item.description}</td>
                 <td style={{ padding: "11px 12px", textAlign: "right", color: "#444", fontFamily: mono, fontSize: 11 }}>{item.qty}</td>
                 <td style={{ padding: "11px 12px", textAlign: "right", color: "#444", fontFamily: mono, fontSize: 11 }}>{item.rate}</td>
-                <td style={{ padding: "11px 0 11px 12px", textAlign: "right", fontWeight: "600", color: "#000", fontFamily: mono, fontSize: 12 }}>₹{item.amount.toLocaleString("en-IN")}</td>
+                <td style={{ padding: "11px 0 11px 12px", textAlign: "right", fontWeight: "600", color: "#000", fontFamily: mono, fontSize: 12 }}>₹{(item.amount || 0).toLocaleString("en-IN")}</td>
               </tr>
             ))}
           </tbody>
@@ -620,20 +636,20 @@ function NormalInvoiceContent({ details, settings }: any) {
               {bill.splitPayments.filter((s:any) => s.amount > 0).map((s:any, i:number) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 12 }}>
                   <span style={{ color: "#555", textTransform: "capitalize" }}>{s.method}</span>
-                  <span style={{ fontWeight: "bold", fontFamily: mono }}>₹{s.amount.toLocaleString("en-IN")}</span>
+                  <span style={{ fontWeight: "bold", fontFamily: mono }}>₹{(s.amount || 0).toLocaleString("en-IN")}</span>
                 </div>
               ))}
             </div>
           ) : (
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, fontSize: 12 }}>
               <span style={{ color: "#555", textTransform: "capitalize" }}>{bill.paymentMethod || "Cash"}</span>
-              <span style={{ fontWeight: "bold", fontFamily: mono }}>₹{bill.totalAmount.toLocaleString("en-IN")}</span>
+              <span style={{ fontWeight: "bold", fontFamily: mono }}>₹{(bill.totalAmount || 0).toLocaleString("en-IN")}</span>
             </div>
           )}
           {bill.advancePaid > 0 && (
             <div style={{ borderTop: "1px dashed #bbb", paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 11, color: "#777" }}>
               <span>Advance Paid</span>
-              <span style={{ fontFamily: mono }}>₹{bill.advancePaid.toLocaleString("en-IN")}</span>
+              <span style={{ fontFamily: mono }}>₹{(bill.advancePaid || 0).toLocaleString("en-IN")}</span>
             </div>
           )}
           <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid #e0e0e0" }}>
@@ -661,10 +677,10 @@ function NormalInvoiceContent({ details, settings }: any) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
             <tbody>
               {[
-                ["Subtotal", `₹${bill.subtotal.toLocaleString("en-IN")}`],
-                bill.discountAmount > 0 && ["Discount", `- ₹${bill.discountAmount.toLocaleString("en-IN")}`],
-                bill.isGstBill && ["CGST", `₹${bill.cgst.toLocaleString("en-IN")}`],
-                bill.isGstBill && ["SGST", `₹${bill.sgst.toLocaleString("en-IN")}`],
+                ["Subtotal", `₹${(bill.subtotal || 0).toLocaleString("en-IN")}`],
+                bill.discountAmount > 0 && ["Discount", `- ₹${(bill.discountAmount || 0).toLocaleString("en-IN")}`],
+                bill.isGstBill && ["CGST", `₹${(bill.cgst || 0).toLocaleString("en-IN")}`],
+                bill.isGstBill && ["SGST", `₹${(bill.sgst || 0).toLocaleString("en-IN")}`],
               ].filter(Boolean).map((row: any, i) => (
                 <tr key={i}>
                   <td style={{ paddingBottom: 6, color: "#555" }}>{row[0]}</td>
@@ -675,7 +691,7 @@ function NormalInvoiceContent({ details, settings }: any) {
           </table>
           <div style={{ borderTop: "1px solid #000", marginTop: 6, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <span style={{ fontSize: 12, fontWeight: "bold", letterSpacing: "0.1em", textTransform: "uppercase" }}>Grand Total</span>
-            <span style={{ fontSize: 20, fontWeight: "bold", fontFamily: mono, color: "#000" }}>₹{bill.totalAmount.toLocaleString("en-IN")}</span>
+            <span style={{ fontSize: 20, fontWeight: "bold", fontFamily: mono, color: "#000" }}>₹{(bill.totalAmount || 0).toLocaleString("en-IN")}</span>
           </div>
         </div>
       </div>

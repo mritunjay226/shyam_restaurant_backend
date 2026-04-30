@@ -124,6 +124,22 @@ export const createBanquetBooking = mutation({
     totalAmount: v.number(),
     advance: v.number(),
     notes: v.optional(v.string()),
+    isFullPropertySellOut: v.optional(v.boolean()),
+    includeRooms: v.optional(v.boolean()),
+    roomDetails: v.optional(v.string()),
+    blockedRoomIds: v.optional(v.array(v.id("rooms"))),
+    includeCafe: v.optional(v.boolean()),
+    cafeDetails: v.optional(v.string()),
+    includeRestaurant: v.optional(v.boolean()),
+    restaurantDetails: v.optional(v.string()),
+    extraCharges: v.optional(
+      v.array(
+        v.object({
+          description: v.string(),
+          amount: v.number(),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     const slot = args.timeSlot || "full_day";
@@ -187,7 +203,42 @@ export const createBanquetBooking = mutation({
       balance: args.totalAmount - args.advance,
       status: "confirmed",
       notes: args.notes,
+      isFullPropertySellOut: args.isFullPropertySellOut,
+      includeRooms: args.includeRooms,
+      roomDetails: args.roomDetails,
+      blockedRoomIds: args.blockedRoomIds,
+      includeCafe: args.includeCafe,
+      cafeDetails: args.cafeDetails,
+      includeRestaurant: args.includeRestaurant,
+      restaurantDetails: args.restaurantDetails,
+      extraCharges: args.extraCharges,
     });
+
+    // ── BLOCK ROOMS IF APPLICABLE ──────────────────────────────
+    if (args.blockedRoomIds && args.blockedRoomIds.length > 0) {
+      // Create a booking for each blocked room to prevent other reservations
+      // We'll set the checkOut to the day after eventDate for a standard 1-night block
+      const checkOutDate = new Date(args.eventDate);
+      checkOutDate.setDate(checkOutDate.getDate() + 1);
+      const checkOutStr = checkOutDate.toISOString().split("T")[0];
+
+      for (const roomId of args.blockedRoomIds) {
+        await ctx.db.insert("bookings", {
+          roomId: roomId,
+          guestName: args.guestName + " (Banquet Block)",
+          guestPhone: args.guestPhone,
+          checkIn: args.eventDate,
+          checkOut: checkOutStr,
+          tariff: 0, // Tariff is handled by the banquet contract
+          advance: 0,
+          balance: 0,
+          totalAmount: 0,
+          status: "confirmed",
+          source: "walk_in",
+          notes: `Blocked for Banquet Event: ${args.eventName}`,
+        });
+      }
+    }
 
     // ── RECORD ADVANCE PAYMENT IN BILLS (shows in revenue) ─────
     if (args.advance > 0) {
@@ -225,6 +276,22 @@ export const updateBanquetBooking = mutation({
     totalAmount: v.optional(v.number()),
     advance: v.optional(v.number()),
     notes: v.optional(v.string()),
+    isFullPropertySellOut: v.optional(v.boolean()),
+    includeRooms: v.optional(v.boolean()),
+    roomDetails: v.optional(v.string()),
+    blockedRoomIds: v.optional(v.array(v.id("rooms"))),
+    includeCafe: v.optional(v.boolean()),
+    cafeDetails: v.optional(v.string()),
+    includeRestaurant: v.optional(v.boolean()),
+    restaurantDetails: v.optional(v.string()),
+    extraCharges: v.optional(
+      v.array(
+        v.object({
+          description: v.string(),
+          amount: v.number(),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     const { bookingId, ...updates } = args;
@@ -234,6 +301,8 @@ export const updateBanquetBooking = mutation({
     const totalAmount = updates.totalAmount ?? booking.totalAmount;
     const advance = updates.advance ?? booking.advance;
 
+    // We don't handle un-blocking rooms automatically here to keep it safe, 
+    // but we can update the banquet record.
     return ctx.db.patch(bookingId, { ...updates, balance: totalAmount - advance });
   },
 });

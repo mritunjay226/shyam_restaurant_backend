@@ -138,7 +138,7 @@ const NORMAL_PRINT_STYLES = `
 type PrintMode = "thermal" | "normal";
 
 export default function BillingPage() {
-  const [activeTab, setActiveTab] = useState<"rooms" | "tables">("rooms");
+  const [activeTab, setActiveTab] = useState<"rooms" | "tables" | "banquets" | "due_bills">("rooms");
   const [printMode, setPrintMode] = useState<PrintMode>("normal");
   const settings = useQuery(api.settings.getHotelSettings);
 
@@ -158,6 +158,12 @@ export default function BillingPage() {
 
   const [activeRoomId, setActiveRoomId] = useState<Id<"rooms"> | null>(null);
   const [activeTableKey, setActiveTableKey] = useState<string | null>(null);
+  const [activeBanquetId, setActiveBanquetId] = useState<Id<"banquetBookings"> | null>(null);
+  const [activeDueBillId, setActiveDueBillId] = useState<Id<"bills"> | null>(null);
+  const [dueAmountPaid, setDueAmountPaid] = useState("");
+  const [duePaymentMethod, setDuePaymentMethod] = useState("cash");
+  const [tableAmountPaidInput, setTableAmountPaidInput] = useState("");
+  const [banquetAmountPaidInput, setBanquetAmountPaidInput] = useState("");
   const [includeGST, setIncludeGST] = useState(false);
   const [includeFoodGST, setIncludeFoodGST] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -180,13 +186,22 @@ export default function BillingPage() {
   const bookings = useQuery(api.bookings.getAllBookings) || [];
   const orders = useQuery(api.orders.getAllOrders) || [];
   const tableOrders = useQuery(api.orders.getUnbilledTableOrders) || [];
+  const dueBills = useQuery(api.billing.getDueBills) || [];
+  const banquetBookings = useQuery(api.banquet.getAllBanquetBookings) || [];
+  const halls = useQuery(api.banquet.getAllHalls, {}) || [];
 
   const generateRoomBill = useMutation(api.billing.generateRoomBill);
   const checkOutBooking = useMutation(api.bookings.checkOut);
   const generateTableBill = useMutation(api.billing.generateTableBill);
+  const settleDueBill = useMutation(api.billing.settleDueBill);
+  const generateBanquetBill = useMutation(api.billing.generateBanquetBill);
 
   const occupiedRooms = rooms.filter(
     (r) => r.status === "occupied" || r.status === "pending_checkout"
+  );
+  
+  const unbilledBanquets = banquetBookings.filter(
+    (b) => b.status === "confirmed" || b.status === "pending"
   );
 
   const activeTablesMap = tableOrders.reduce(
@@ -327,6 +342,8 @@ export default function BillingPage() {
     const [outlet, tableNumber] = activeTableKey.split(":");
     setIsSubmitting(true);
     try {
+      const parsedAmountPaid = tableAmountPaidInput.trim() !== "" ? parseFloat(tableAmountPaidInput) : tableGrandTotal;
+
       await generateTableBill({
         outlet,
         tableNumber,
@@ -341,6 +358,7 @@ export default function BillingPage() {
           ? splitPayments.filter((s) => s.amount > 0)
           : undefined,
         gstin: guestGst || undefined,
+        amountPaid: parsedAmountPaid,
       });
       toast.success(`Table ${tableNumber} billed successfully!`);
       setActiveTableKey(null);
@@ -349,6 +367,41 @@ export default function BillingPage() {
       setHousekeepingCharge(0);
       setExtraCharge(0);
       setUseSplitPayment(false);
+      setTableAmountPaidInput("");
+    } catch (e: any) {
+      toast.error("Billing failed: " + e.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleBillBanquet = async () => {
+    if (!activeBanquetId) return;
+    setIsSubmitting(true);
+    try {
+      const b = banquetBookings.find((x) => x._id === activeBanquetId);
+      if (!b) return;
+
+      const baseTotal = b.totalAmount;
+      const cgst = includeGST ? baseTotal * 0.09 : 0;
+      const sgst = includeGST ? baseTotal * 0.09 : 0;
+      const grandTotal = baseTotal + cgst + sgst;
+      const parsedAmountPaid = banquetAmountPaidInput.trim() !== "" ? parseFloat(banquetAmountPaidInput) : (grandTotal - b.advance);
+
+      await generateBanquetBill({
+        banquetBookingId: activeBanquetId,
+        isGstBill: includeGST,
+        paymentMethod: useSplitPayment ? "split" : paymentMethod,
+        splitPayments: useSplitPayment
+          ? splitPayments.filter((s) => s.amount > 0)
+          : undefined,
+        gstin: guestGst || undefined,
+        amountPaid: parsedAmountPaid,
+      });
+      toast.success(`Banquet billed successfully!`);
+      setActiveBanquetId(null);
+      setUseSplitPayment(false);
+      setBanquetAmountPaidInput("");
     } catch (e: any) {
       toast.error("Billing failed: " + e.message);
     } finally {
@@ -359,6 +412,9 @@ export default function BillingPage() {
   const currentRoomCharges = activeRoomId ? getCharges(activeRoomId) : null;
   const currentTableCharges = activeTableKey
     ? activeTablesMap[activeTableKey]
+    : null;
+  const currentBanquetCharges = activeBanquetId
+    ? banquetBookings.find((b) => b._id === activeBanquetId)
     : null;
 
   const tableBaseTotal = currentTableCharges?.total || 0;
@@ -380,9 +436,17 @@ export default function BillingPage() {
       : 0;
   const tableGrandTotal = tableSubtotal + tableCgst + tableSgst;
 
-  const currentGrandTotal = activeRoomId
-    ? currentRoomCharges?.grandTotal || 0
-    : tableGrandTotal;
+  let currentGrandTotal = 0;
+  if (activeRoomId) {
+    currentGrandTotal = currentRoomCharges?.grandTotal || 0;
+  } else if (activeTableKey) {
+    currentGrandTotal = tableGrandTotal;
+  } else if (currentBanquetCharges) {
+    const baseTotal = currentBanquetCharges.totalAmount;
+    const cgst = includeGST ? baseTotal * 0.09 : 0;
+    const sgst = includeGST ? baseTotal * 0.09 : 0;
+    currentGrandTotal = baseTotal + cgst + sgst;
+  }
   const splitTotal = splitPayments.reduce((acc, curr) => acc + curr.amount, 0);
   const isSplitValid = Math.abs(currentGrandTotal - splitTotal) < 1;
   const buttonDisabled = isSubmitting || (useSplitPayment && !isSplitValid);
@@ -406,6 +470,7 @@ export default function BillingPage() {
     activeRoomId,
     currentRoomCharges,
     currentTableCharges,
+    currentBanquetCharges,
     paymentMethod: useSplitPayment ? "split" : paymentMethod,
     splitPayments: useSplitPayment ? splitPayments : undefined,
     includeGST,
@@ -434,23 +499,48 @@ export default function BillingPage() {
     await printReceipt(el.innerHTML, printMode === "thermal");
   };
 
+  const handleSettleDueBill = async (billId: Id<"bills">, maxAmount: number) => {
+    setIsSubmitting(true);
+    try {
+      const amountToPay = dueAmountPaid.trim() !== "" ? parseFloat(dueAmountPaid) : maxAmount;
+      if (amountToPay <= 0 || amountToPay > maxAmount) {
+        toast.error("Invalid payment amount. Must be between 1 and " + maxAmount);
+        return;
+      }
+      await settleDueBill({ billId, amount: amountToPay, paymentMethod: duePaymentMethod });
+      toast.success("Pending due amount settled successfully!");
+      setActiveDueBillId(null);
+      setDueAmountPaid("");
+      setDuePaymentMethod("cash");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to settle due bill");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const activeBill = dueBills.find((b) => b._id === activeDueBillId);
 
   return (
-    <div className="flex flex-col min-h-full">
+    <div className="flex-1 bg-gray-50/50 min-h-screen pt-16 lg:pt-0">
       <DesktopTopbar
         title={
           activeRoomId && currentRoomCharges
             ? `Room ${currentRoomCharges.room.roomNumber} — Checkout`
             : activeTableKey && currentTableCharges
               ? `Table ${currentTableCharges.tableNumber} — Billing`
-              : "Billing & Checkout"
+              : activeBanquetId && currentBanquetCharges
+                ? `Banquet ${currentBanquetCharges.eventName} — Billing`
+                : activeDueBillId && activeBill
+                  ? `Settle Bill — ${activeBill.referenceId}`
+                  : "Billing & Checkout"
         }
       />
 
       <div className="p-5 lg:p-6 max-w-5xl mx-auto w-full pb-24 lg:pb-6">
         <AnimatePresence mode="popLayout">
           {/* ── Selection View ── */}
-          {!activeRoomId && !activeTableKey && (
+          {!activeRoomId && !activeTableKey && !activeBanquetId && !activeDueBillId && (
             <motion.div
               key="list"
               initial={{ opacity: 0 }}
@@ -488,6 +578,33 @@ export default function BillingPage() {
                     )}
                   >
                     Table Service
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("banquets")}
+                    className={cn(
+                      "px-6 py-2 rounded-lg text-sm font-bold transition-all",
+                      activeTab === "banquets"
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    )}
+                  >
+                    Banquets
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("due_bills")}
+                    className={cn(
+                      "px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2",
+                      activeTab === "due_bills"
+                        ? "bg-amber-100 text-amber-900 shadow-sm border border-amber-200"
+                        : "text-gray-500 hover:text-gray-700"
+                    )}
+                  >
+                    Due Bills
+                    {dueBills.length > 0 && (
+                      <span className="bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                        {dueBills.length}
+                      </span>
+                    )}
                   </button>
                 </div>
               </div>
@@ -572,69 +689,164 @@ export default function BillingPage() {
                     })}
                   </div>
                 )
-              ) : activeTablesList.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-16 flex flex-col items-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center">
-                    <Smartphone size={24} className="text-gray-400" />
+              ) : activeTab === "tables" ? (
+                activeTablesList.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-16 flex flex-col items-center gap-3">
+                    <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center">
+                      <Smartphone size={24} className="text-gray-400" />
+                    </div>
+                    <div className="text-center">
+                      <p className="font-semibold text-gray-900">
+                        No active tables
+                      </p>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        All tables are currently clear or paid.
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <p className="font-semibold text-gray-900">
-                      No active tables
-                    </p>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                      All tables are currently clear or paid.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {activeTablesList.map((table) => (
-                    <button
-                      key={`${table.outlet}:${table.tableNumber}`}
-                      onClick={() =>
-                        setActiveTableKey(
-                          `${table.outlet}:${table.tableNumber}`
-                        )
-                      }
-                      className="bg-white rounded-2xl border border-gray-100 shadow-sm text-left p-5 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5"
-                    >
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
-                            <span className="font-black text-indigo-600">
-                              T
-                            </span>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {activeTablesList.map((table) => (
+                      <button
+                        key={`${table.outlet}:${table.tableNumber}`}
+                        onClick={() =>
+                          setActiveTableKey(
+                            `${table.outlet}:${table.tableNumber}`
+                          )
+                        }
+                        className="bg-white rounded-2xl border border-gray-100 shadow-sm text-left p-5 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5"
+                      >
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+                              <span className="font-black text-indigo-600">
+                                T
+                              </span>
+                            </div>
+                            <div>
+                              <p className="text-base font-bold text-gray-900 tabular-nums">
+                                Table {table.tableNumber}
+                              </p>
+                              <p className="text-xs text-gray-400 font-medium">
+                                {outletName(table.outlet)}
+                              </p>
+                            </div>
                           </div>
+                          <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase">
+                            {table.count} KOTs
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                          <p className="text-xs text-gray-400 font-medium">
+                            Pending Dues
+                          </p>
+                          <p className="text-lg font-black text-gray-900 tabular-nums">
+                            ₹{table.total.toLocaleString("en-IN")}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )
+              ) : activeTab === "banquets" ? (
+                unbilledBanquets.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-16 flex flex-col items-center gap-3">
+                    <p className="text-gray-500 font-medium">
+                      No confirmed banquets pending bill generation
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {unbilledBanquets.map((b) => (
+                      <button
+                        key={b._id}
+                        onClick={() => setActiveBanquetId(b._id)}
+                        className="bg-white rounded-2xl border border-gray-100 shadow-sm text-left p-5 hover:shadow-md hover:border-indigo-200 transition-all duration-200 hover:-translate-y-0.5 group"
+                      >
+                        <div className="flex justify-between items-start mb-3">
                           <div>
-                            <p className="text-base font-bold text-gray-900 tabular-nums">
-                              Table {table.tableNumber}
-                            </p>
-                            <p className="text-xs text-gray-400 font-medium">
-                              {outletName(table.outlet)}
-                            </p>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{b.eventType}</p>
+                            <p className="text-base font-bold text-gray-900 mt-0.5">{b.eventName}</p>
+                          </div>
+                          <span className="bg-purple-50 text-purple-600 font-bold px-2 py-1 rounded-md text-xs">
+                            {format(parseISO(b.eventDate), "MMM dd")}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-3 font-medium">
+                          <User size={14} className="inline mr-1.5 text-gray-400 -mt-0.5" />
+                          {b.guestName}
+                        </p>
+                        <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-2 gap-2 text-sm group-hover:bg-indigo-50/50 transition-colors">
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Total</p>
+                            <p className="font-bold text-gray-900">₹{b.totalAmount.toLocaleString()}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Advance</p>
+                            <p className="font-bold text-gray-900">₹{b.advance.toLocaleString()}</p>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase">
-                          {table.count} KOTs
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-                        <p className="text-xs text-gray-400 font-medium">
-                          Pending Dues
+                      </button>
+                    ))}
+                  </div>
+                )
+              ) : (
+                /* Due Bills View */
+                dueBills.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-16 flex flex-col items-center gap-3">
+                    <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center">
+                      <FileText size={24} className="text-gray-400" />
+                    </div>
+                    <div className="text-center">
+                      <p className="font-semibold text-gray-900">
+                        No Due Bills
+                      </p>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        All bills have been fully paid.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {dueBills.map(bill => (
+                      <button
+                        key={bill._id}
+                        onClick={() => setActiveDueBillId(bill._id)}
+                        className="bg-white rounded-2xl border border-amber-200 shadow-sm text-left p-5 hover:shadow-md hover:border-amber-300 transition-all duration-200 hover:-translate-y-0.5"
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">{bill.billType} Bill</p>
+                            <p className="text-base font-bold text-gray-900 mt-0.5">{bill.referenceId}</p>
+                          </div>
+                          <span className="bg-red-50 text-red-600 font-bold px-2 py-1 rounded-md text-xs">
+                            DUE
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-3 font-medium">
+                          <User size={14} className="inline mr-1.5 text-gray-400 -mt-0.5" />
+                          {bill.guestName}
                         </p>
-                        <p className="text-lg font-black text-gray-900 tabular-nums">
-                          ₹{table.total.toLocaleString("en-IN")}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                        <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Total</p>
+                            <p className="font-bold text-gray-900">₹{bill.totalAmount.toLocaleString()}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Pending</p>
+                            <p className="font-black text-red-600">₹{(bill.amountDue || 0).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )
               )}
             </motion.div>
           )}
 
           {/* ── Bill Detail ── */}
-          {(activeRoomId || activeTableKey) && (
+          {(activeRoomId || activeTableKey || activeBanquetId) && (
             <motion.div
               key="billing"
               initial={{ opacity: 0, x: 16 }}
@@ -645,6 +857,7 @@ export default function BillingPage() {
                 onClick={() => {
                   setActiveRoomId(null);
                   setActiveTableKey(null);
+                  setActiveBanquetId(null);
                 }}
                 className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-5 transition-colors print:hidden"
               >
@@ -883,6 +1096,25 @@ export default function BillingPage() {
                         </button>
                       </div>
                     )}
+                    
+                    {/* Amount Paid Today */}
+                    {!useSplitPayment && (activeTableKey || activeBanquetId) && (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <Label className="text-sm font-bold text-gray-900 block mb-2">
+                          Amount Paid Today (₹)
+                        </Label>
+                        <input
+                          type="number"
+                          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          value={activeBanquetId ? banquetAmountPaidInput : tableAmountPaidInput}
+                          onChange={(e) => activeBanquetId ? setBanquetAmountPaidInput(e.target.value) : setTableAmountPaidInput(e.target.value)}
+                          placeholder={`Full amount: ${currentGrandTotal}`}
+                          min={0}
+                          max={currentGrandTotal}
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">Leave empty to pay full amount. Less amount marks bill as DUE.</p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Action Buttons */}
@@ -905,7 +1137,7 @@ export default function BillingPage() {
                           : "border-indigo-200 text-indigo-600 hover:bg-indigo-50"
                       )}
                       onClick={
-                        activeRoomId ? handleCheckout : handleBillTable
+                        activeRoomId ? handleCheckout : activeBanquetId ? handleBillBanquet : handleBillTable
                       }
                     >
                       {isSubmitting
@@ -992,6 +1224,7 @@ interface ThermalProps {
   activeRoomId: any;
   currentRoomCharges: any;
   currentTableCharges: any;
+  currentBanquetCharges: any;
   paymentMethod: string;
   splitPayments?: { method: string; amount: number }[];
   includeGST: boolean;
@@ -1017,6 +1250,7 @@ function ThermalReceiptContent({
   activeRoomId,
   currentRoomCharges,
   currentTableCharges,
+  currentBanquetCharges,
   paymentMethod,
   splitPayments,
   includeGST,
@@ -1067,7 +1301,7 @@ function ThermalReceiptContent({
 
   const grandTotalPayable = activeRoomId
     ? Math.max(0, (currentRoomCharges?.grandTotal ?? 0) - (currentRoomCharges?.booking?.advance ?? 0))
-    : tableGrandTotal;
+    : currentBanquetCharges ? (currentBanquetCharges.totalAmount + (includeGST ? currentBanquetCharges.totalAmount * 0.18 : 0)) : tableGrandTotal;
 
   return (
     <div style={{ color: "#000", background: "#fff", fontFamily: "'Courier New', Courier, monospace" }}>
@@ -1112,6 +1346,14 @@ function ThermalReceiptContent({
           {row("Room", `#${currentRoomCharges.room.roomNumber} (${currentRoomCharges.room.category})`)}
           {row("Check-In", currentRoomCharges.booking.checkIn)}
           {row("Nights", String(currentRoomCharges.nights))}
+        </>
+      ) : currentBanquetCharges ? (
+        <>
+          {row("Event", `${currentBanquetCharges.eventName} (${currentBanquetCharges.eventType})`)}
+          {row("Guest", currentBanquetCharges.guestName)}
+          {companyName && row("Company", companyName)}
+          {guestGst && row("GSTIN", guestGst)}
+          {row("Date", format(parseISO(currentBanquetCharges.eventDate), "dd/MM/yyyy"))}
         </>
       ) : (
         <>
@@ -1177,6 +1419,15 @@ function ThermalReceiptContent({
                 </>
               )}
             </>
+          ) : currentBanquetCharges ? (
+            <>
+              {tableRow(
+                "Banquet Booking",
+                "1",
+                `${currentBanquetCharges.totalAmount.toLocaleString("en-IN")}`,
+                `${currentBanquetCharges.totalAmount.toLocaleString("en-IN")}`
+              )}
+            </>
           ) : (
             currentTableCharges?.orders?.map((order: any) => (
               <Fragment key={order._id}>
@@ -1207,17 +1458,19 @@ function ThermalReceiptContent({
       {/* Adjustments */}
       {activeRoomId && currentRoomCharges?.booking?.advance > 0 &&
         row("Advance Paid", `- Rs.${currentRoomCharges.booking.advance.toLocaleString("en-IN")}`)}
+      {currentBanquetCharges?.advance > 0 &&
+        row("Advance Paid", `- Rs.${currentBanquetCharges.advance.toLocaleString("en-IN")}`)}
       {discountAmount > 0 && row("Discount", `- Rs.${discountAmount.toLocaleString("en-IN")}`)}
       {serviceCharge > 0 && row("Service Charge", `Rs.${serviceCharge.toLocaleString("en-IN")}`)}
       {housekeepingCharge > 0 && row("Housekeeping", `Rs.${housekeepingCharge.toLocaleString("en-IN")}`)}
       {extraCharge > 0 && row("Extra Charges", `Rs.${extraCharge.toLocaleString("en-IN")}`)}
 
-      {row("Subtotal", `Rs.${(activeRoomId ? currentRoomCharges?.subtotal ?? 0 : tableSubtotal).toLocaleString("en-IN")}`)}
+      {row("Subtotal", `Rs.${(activeRoomId ? currentRoomCharges?.subtotal ?? 0 : currentBanquetCharges ? currentBanquetCharges.totalAmount : tableSubtotal).toLocaleString("en-IN")}`)}
 
       {includeGST && (
         <>
-          {row(`CGST @ ${(roomGstRate / 2) * 100}%`, `Rs.${(activeRoomId ? currentRoomCharges?.cgst ?? 0 : tableCgst).toLocaleString("en-IN")}`)}
-          {row(`SGST @ ${(roomGstRate / 2) * 100}%`, `Rs.${(activeRoomId ? currentRoomCharges?.sgst ?? 0 : tableSgst).toLocaleString("en-IN")}`)}
+          {row(`CGST @ ${(roomGstRate / 2) * 100}%`, `Rs.${(activeRoomId ? currentRoomCharges?.cgst ?? 0 : currentBanquetCharges ? currentBanquetCharges.totalAmount * 0.09 : tableCgst).toLocaleString("en-IN")}`)}
+          {row(`SGST @ ${(roomGstRate / 2) * 100}%`, `Rs.${(activeRoomId ? currentRoomCharges?.sgst ?? 0 : currentBanquetCharges ? currentBanquetCharges.totalAmount * 0.09 : tableSgst).toLocaleString("en-IN")}`)}
         </>
       )}
 
@@ -1273,6 +1526,7 @@ function NormalInvoiceContent({
   activeRoomId,
   currentRoomCharges,
   currentTableCharges,
+  currentBanquetCharges,
   paymentMethod,
   splitPayments,
   includeGST,
@@ -1301,11 +1555,11 @@ function NormalInvoiceContent({
 
   const grandTotalPayable = activeRoomId
     ? Math.max(0, (currentRoomCharges?.grandTotal ?? 0) - (currentRoomCharges?.booking?.advance ?? 0))
-    : tableGrandTotal;
+    : currentBanquetCharges ? (currentBanquetCharges.totalAmount + (includeGST ? currentBanquetCharges.totalAmount * 0.18 : 0)) : tableGrandTotal;
 
-  const subtotalDisplay = activeRoomId ? currentRoomCharges?.subtotal ?? 0 : tableSubtotal;
-  const cgstDisplay = activeRoomId ? currentRoomCharges?.cgst ?? 0 : tableCgst;
-  const sgstDisplay = activeRoomId ? currentRoomCharges?.sgst ?? 0 : tableSgst;
+  const subtotalDisplay = activeRoomId ? currentRoomCharges?.subtotal ?? 0 : currentBanquetCharges ? currentBanquetCharges.totalAmount : tableSubtotal;
+  const cgstDisplay = activeRoomId ? currentRoomCharges?.cgst ?? 0 : currentBanquetCharges ? (includeGST ? currentBanquetCharges.totalAmount * 0.09 : 0) : tableCgst;
+  const sgstDisplay = activeRoomId ? currentRoomCharges?.sgst ?? 0 : currentBanquetCharges ? (includeGST ? currentBanquetCharges.totalAmount * 0.09 : 0) : tableSgst;
 
   // Collect all line items
   const lineItems: { description: string; qty: string; rate: string; amount: number }[] = [];
@@ -1331,6 +1585,8 @@ function NormalInvoiceContent({
         lineItems.push({ description: `${item.name} (${outletName(order.outlet)})`, qty: String(item.quantity), rate: `₹${item.price.toLocaleString("en-IN")}`, amount: item.quantity * item.price });
       });
     });
+  } else if (currentBanquetCharges) {
+    lineItems.push({ description: `Banquet Booking — ${currentBanquetCharges.eventName} (${currentBanquetCharges.eventType})`, qty: "1", rate: `₹${currentBanquetCharges.totalAmount.toLocaleString("en-IN")}`, amount: currentBanquetCharges.totalAmount });
   }
 
   if (serviceCharge > 0) lineItems.push({ description: "Service Charge", qty: "1", rate: `₹${serviceCharge.toLocaleString("en-IN")}`, amount: serviceCharge });
@@ -1405,7 +1661,7 @@ function NormalInvoiceContent({
             Billed To
           </div>
           <div style={{ fontSize: 15, fontWeight: "bold", color: "#000", marginBottom: 4, letterSpacing: "0.02em" }}>
-            {activeRoomId ? currentRoomCharges?.booking?.guestName || "Guest" : "Walk-in Guest"}
+            {activeRoomId ? currentRoomCharges?.booking?.guestName || "Guest" : currentBanquetCharges ? currentBanquetCharges.guestName : "Walk-in Guest"}
           </div>
           {companyName && (
             <div style={{ fontSize: 13, fontWeight: "bold", color: "#000", marginBottom: 2 }}>
@@ -1425,7 +1681,10 @@ function NormalInvoiceContent({
               {currentRoomCharges.booking.idType}: {currentRoomCharges.booking.idNumber || "—"}
             </div>
           )}
-          {!activeRoomId && currentTableCharges && (
+          {currentBanquetCharges && (
+            <div style={{ fontSize: 11, color: "#555", marginBottom: 2 }}>{currentBanquetCharges.guestPhone}</div>
+          )}
+          {!activeRoomId && !currentBanquetCharges && currentTableCharges && (
             <div style={{ fontSize: 11, color: "#555" }}>
               {outletName(currentTableCharges.outlet)} · Table {currentTableCharges.tableNumber}
             </div>
@@ -1440,7 +1699,7 @@ function NormalInvoiceContent({
         {/* Stay / Service details */}
         <div style={{ padding: "20px 48px 20px 28px" }}>
           <div style={{ fontSize: 8.5, fontWeight: "bold", letterSpacing: "0.2em", textTransform: "uppercase", color: "#888", marginBottom: 10 }}>
-            {activeRoomId ? "Stay Details" : "Service Details"}
+            {activeRoomId ? "Stay Details" : currentBanquetCharges ? "Event Details" : "Service Details"}
           </div>
           {activeRoomId && currentRoomCharges ? (
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
@@ -1451,6 +1710,21 @@ function NormalInvoiceContent({
                   ["Check-Out", currentRoomCharges.booking.checkOut || format(now, "dd/MM/yyyy")],
                   ["Duration", `${currentRoomCharges.nights} Night${currentRoomCharges.nights > 1 ? "s" : ""}`],
                   ["Tariff", `₹${currentRoomCharges.booking.tariff.toLocaleString("en-IN")} / night`],
+                ].map(([label, val], i) => (
+                  <tr key={i}>
+                    <td style={{ paddingBottom: 5, color: "#666", width: "45%" }}>{label}</td>
+                    <td style={{ paddingBottom: 5, fontWeight: "600", color: "#000", textAlign: "right" }}>{val}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : currentBanquetCharges ? (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <tbody>
+                {[
+                  ["Event", `${currentBanquetCharges.eventName} (${currentBanquetCharges.eventType})`],
+                  ["Event Date", format(parseISO(currentBanquetCharges.eventDate), "dd MMM yyyy")],
+                  ["Date", format(now, "dd MMM yyyy, hh:mm a")],
                 ].map(([label, val], i) => (
                   <tr key={i}>
                     <td style={{ paddingBottom: 5, color: "#666", width: "45%" }}>{label}</td>

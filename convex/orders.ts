@@ -229,6 +229,35 @@ export const addItemsToOrder = mutation({
   },
 });
 
+export const updateOrderItems = mutation({
+  args: {
+    orderId: v.id("orders"),
+    items: v.array(
+      v.object({
+        menuItemId: v.union(v.id("banquetMenuItems"), v.id("menuItems")),
+        name: v.string(),
+        price: v.number(),
+        quantity: v.number(),
+        category: v.string(),
+        notes: v.optional(v.string()),
+        course: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Order not found");
+
+    if (args.items.length === 0) {
+      await ctx.db.delete(args.orderId);
+      return;
+    }
+
+    const { subtotal, gstAmount, totalAmount } = calcGST(args.items);
+    return ctx.db.patch(args.orderId, { items: args.items, subtotal, gstAmount, totalAmount });
+  },
+});
+
 export const updateOrderStatus = mutation({
   args: { orderId: v.id("orders"), status: v.string() },
   handler: async (ctx, args) => ctx.db.patch(args.orderId, { status: args.status }),

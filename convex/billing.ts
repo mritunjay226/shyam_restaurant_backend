@@ -215,6 +215,15 @@ export const generateBanquetBill = mutation({
     isGstBill: v.boolean(),
     gstin: v.optional(v.string()),
     paymentMethod: v.string(),
+    splitPayments: v.optional(
+      v.array(
+        v.object({
+          method: v.string(),
+          amount: v.number(),
+        })
+      )
+    ),
+    amountPaid: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.banquetBookingId);
@@ -230,6 +239,18 @@ export const generateBanquetBill = mutation({
 
     const totalAmount = booking.totalAmount + cgst + sgst;
 
+    const amountPaidToday = args.amountPaid ?? (totalAmount - booking.advance);
+    const totalPaid = amountPaidToday + booking.advance;
+    const amountDue = Math.max(0, totalAmount - totalPaid);
+    const status = amountDue > 0 ? "due" : "paid";
+
+    const initialSplit = args.splitPayments || [
+      { method: args.paymentMethod, amount: amountPaidToday, timestamp: Date.now() },
+    ];
+    if (booking.advance > 0 && !args.splitPayments) {
+      initialSplit.push({ method: "advance", amount: booking.advance, timestamp: Date.now() });
+    }
+
     const billId = await ctx.db.insert("bills", {
       billType: "banquet",
       referenceId: args.banquetBookingId,
@@ -241,7 +262,10 @@ export const generateBanquetBill = mutation({
       sgst: Math.round(sgst * 100) / 100,
       totalAmount: Math.round(totalAmount * 100) / 100,
       paymentMethod: args.paymentMethod,
-      status: "generated",
+      splitPayments: initialSplit,
+      amountPaid: totalPaid,
+      amountDue: amountDue,
+      status: status,
       createdAt: new Date().toISOString().split("T")[0],
     });
 
@@ -264,6 +288,7 @@ export const generateTableBill = mutation({
     serviceCharge: v.optional(v.number()),
     housekeepingCharge: v.optional(v.number()),
     extraCharge: v.optional(v.number()),
+    amountPaid: v.optional(v.number()),
     splitPayments: v.optional(v.array(v.object({
       method: v.string(),
       amount: v.number(),
@@ -330,6 +355,18 @@ export const generateTableBill = mutation({
 
     const totalAmount = subtotal + cgst + sgst;
 
+    let amountPaid = 0;
+    if (args.splitPayments && args.splitPayments.length > 0) {
+      amountPaid = args.splitPayments.reduce((sum, p) => sum + p.amount, 0);
+    } else if (args.amountPaid !== undefined) {
+      amountPaid = args.amountPaid;
+    } else {
+      amountPaid = totalAmount; // Default to full payment if not specified
+    }
+
+    const amountDue = Math.max(0, totalAmount - amountPaid);
+    const status = amountDue > 0 ? "due" : "paid";
+
     const billId = await ctx.db.insert("bills", {
       billType: args.outlet,
       referenceId: `${args.outlet}-${args.tableNumber}-${Date.now()}`,
@@ -344,9 +381,11 @@ export const generateTableBill = mutation({
       cgst: Math.round(cgst * 100) / 100,
       sgst: Math.round(sgst * 100) / 100,
       totalAmount: Math.round(totalAmount * 100) / 100,
+      amountPaid: Math.round(amountPaid * 100) / 100,
+      amountDue: Math.round(amountDue * 100) / 100,
       paymentMethod: args.paymentMethod,
       splitPayments: args.splitPayments,
-      status: "paid",
+      status: status,
       createdAt: new Date().toISOString().split("T")[0],
     });
 
@@ -365,6 +404,8 @@ export const generateTableBill = mutation({
     return billId;
   },
 });
+
+
 
 // DIRECT CHECKOUT ORDER (For fast walk-ins)
 export const directCheckoutOrder = mutation({
@@ -457,6 +498,7 @@ export const getBillDetails = query({
 
     let roomCharges: any = null;
     let tableCharges: any = null;
+    let banquetCharges: any = null;
 
     if (bill.billType === "room") {
       const booking = await ctx.db.get(bill.referenceId as any) as any;
@@ -502,7 +544,7 @@ export const getBillDetails = query({
        // Just returning the banquet booking is enough as banquet receipts are not complex
        const booking = await ctx.db.get(bill.referenceId as any) as any;
        if (booking) {
-         roomCharges = { booking }; 
+         banquetCharges = booking; 
        }
     } else {
       // Restaurant / Cafe table bill
@@ -541,7 +583,71 @@ export const getBillDetails = query({
     return {
       bill,
       roomCharges,
-      tableCharges
+      tableCharges,
+      banquetCharges
     };
+  },
+});
+
+// GET DUE BILLS
+export const getDueBills = query({
+  handler: async (ctx) => {
+    return await ctx.db
+      .query("bills")
+      .withIndex("by_status", (q) => q.eq("status", "due"))
+      .collect();
+  },
+});
+
+// SETTLE DUE BILL
+export const settleDueBill = mutation({
+  args: {
+    billId: v.id("bills"),
+    amount: v.number(),
+    paymentMethod: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const bill = await ctx.db.get(args.billId);
+    if (!bill) throw new Error("Bill not found");
+    if (bill.status !== "due" || !bill.amountDue) {
+      throw new Error("This bill does not have a pending due amount.");
+    }
+
+    const newAmountPaid = (bill.amountPaid || 0) + args.amount;
+    const newAmountDue = Math.max(0, bill.totalAmount - newAmountPaid);
+    const newStatus = newAmountDue <= 0 ? "paid" : "due";
+
+    // Track payment history if splitPayments is present or create it
+    const newSplitPayments = bill.splitPayments ? [...bill.splitPayments] : [];
+    if (bill.paymentMethod && bill.paymentMethod !== "split" && newSplitPayments.length === 0) {
+      // Convert initial single payment to split format to keep history
+      newSplitPayments.push({
+        method: bill.paymentMethod,
+        amount: bill.amountPaid || 0,
+      });
+    }
+    
+    newSplitPayments.push({
+      method: args.paymentMethod,
+      amount: args.amount,
+    });
+
+    await ctx.db.patch(args.billId, {
+      amountPaid: Math.round(newAmountPaid * 100) / 100,
+      amountDue: Math.round(newAmountDue * 100) / 100,
+      status: newStatus,
+      paymentMethod: "split",
+      splitPayments: newSplitPayments,
+    });
+
+    // AUDIT LOG
+    await ctx.db.insert("auditLog", {
+      staffId: (await ctx.db.query("staff").first())?._id!,
+      action: "settle_due_bill",
+      details: `Settled ₹${args.amount} for Bill ${args.billId} via ${args.paymentMethod}. Remaining Due: ₹${newAmountDue}`,
+      timestamp: Date.now(),
+    });
+
+    return args.billId;
   },
 });
