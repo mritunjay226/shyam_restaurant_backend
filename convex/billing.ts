@@ -116,8 +116,8 @@ export const generateRoomBill = mutation({
     const foodGstTotal = linkedOrders.reduce((sum, o) => sum + (o.gstAmount || 0), 0);
     const orderSubtotal = linkedOrders.reduce((sum, o) => sum + (o.subtotal || 0), 0);
     
-    // Food GST is added ONLY if BOTH main GST toggle and specific Food GST toggle are on
-    const includeFood = args.includeFoodGst !== false && args.isGstBill;
+    // Food GST is independent of Room GST
+    const includeFood = args.includeFoodGst === true;
     const cgst = roomCgst + (includeFood ? (foodGstTotal / 2) : 0);
     const sgst = roomSgst + (includeFood ? (foodGstTotal / 2) : 0);
 
@@ -414,7 +414,7 @@ export const directCheckoutOrder = mutation({
     tableNumber: v.string(),
     items: v.array(
       v.object({
-        menuItemId: v.union(v.id("banquetMenuItems"), v.id("menuItems")),
+        menuItemId: v.union(v.id("banquetMenuItems"), v.id("menuItems"), v.id("groceryProducts")),
         name: v.string(),
         price: v.number(),
         quantity: v.number(),

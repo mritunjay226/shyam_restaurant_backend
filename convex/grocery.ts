@@ -75,15 +75,15 @@ export const searchGroceryProducts = query({
 export const addGroceryProduct = mutation({
   args: {
     name: v.string(),
-    category: v.string(),
+    category: v.optional(v.string()),
     subCategory: v.optional(v.string()),
     barcode: v.optional(v.string()),
-    unit: v.string(),             // "kg", "litre", "piece", "packet", etc.
+    unit: v.optional(v.string()),             // "kg", "litre", "piece", "packet", etc.
     sellingPrice: v.optional(v.number()),
     costPrice: v.optional(v.number()),
     gstRate: v.optional(v.number()), // percentage e.g. 5, 12, 18
     stockQuantity: v.number(),
-    lowStockThreshold: v.number(),
+    lowStockThreshold: v.optional(v.number()),
     description: v.optional(v.string()),
     image: v.optional(v.string()),
     brandName: v.optional(v.string()),
@@ -94,10 +94,17 @@ export const addGroceryProduct = mutation({
     isOrganic: v.optional(v.boolean()),
     countryOfOrigin: v.optional(v.string()),
     packagingType: v.optional(v.string()),
-    isActive: v.boolean(),
+    isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("groceryProducts", args);
+    const product = {
+      ...args,
+      category: args.category ?? "General",
+      unit: args.unit ?? "piece",
+      lowStockThreshold: args.lowStockThreshold ?? 0,
+      isActive: args.isActive ?? true,
+    };
+    return await ctx.db.insert("groceryProducts", product as any);
   },
 });
 

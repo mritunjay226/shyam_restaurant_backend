@@ -33,7 +33,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeftRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-type MenuItemType = Doc<"banquetMenuItems"> & { category?: string };
+type MenuItemType = {
+  _id: string;
+  name: string;
+  price: number;
+  categoryId: string;
+  category: string;
+  dietaryType?: string;
+  description?: string;
+  image?: string;
+  unit?: string;
+};
 
 // ── Bill Preview State Type ──
 type BillPreviewState = {

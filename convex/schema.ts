@@ -78,7 +78,7 @@ export default defineSchema({
     kotNumber: v.optional(v.string()),           // "KOT-2025-0001"
     takenById: v.optional(v.id("staff")),        // who created the order
     items: v.array(v.object({
-      menuItemId: v.union(v.id("banquetMenuItems"), v.id("menuItems")),
+      menuItemId: v.union(v.id("banquetMenuItems"), v.id("menuItems"), v.id("groceryProducts")),
       name: v.string(),
       price: v.number(),
       quantity: v.number(),
