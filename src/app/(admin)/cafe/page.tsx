@@ -45,7 +45,7 @@ export default function CafePage() {
     category: "Store Items",
     dietaryType: "veg",
     description: `Stock: ${p.stockQuantity} ${p.unit}`,
-    image: p.imageUrl,
+    image: p.image,
     unit: p.unit,
   }));
 

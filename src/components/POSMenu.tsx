@@ -1046,7 +1046,7 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
         tableNumber: activeTable,
         roomId: roomIdToLink,
         items: currentCart.map(c => ({ 
-          menuItemId: c._id, 
+          menuItemId: c._id as any, 
           name: c.name, 
           price: c.price, 
           quantity: c.qty, 
@@ -1071,7 +1071,7 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
         outlet,
         tableNumber: activeTable,
         items: currentCart.map(c => ({ 
-          menuItemId: c._id, 
+          menuItemId: c._id as any, 
           name: c.name, 
           price: c.price, 
           quantity: c.qty, 
