@@ -201,7 +201,7 @@ function AIChatbotButton({ token, staffRole }: { token: string; staffRole: strin
 
   return (
     <>
-      <button
+      {/* <button
         onClick={() => setOpen(true)}
         className={cn(
           buttonVariants({ variant: "outline", size: "sm" }),
@@ -212,7 +212,7 @@ function AIChatbotButton({ token, staffRole }: { token: string; staffRole: strin
       >
         <Sparkles size={13} className="shrink-0" />
         <span className="hidden sm:inline">Ask AI</span>
-      </button>
+      </button> */}
 
       <AnimatePresence>
         {open && (
