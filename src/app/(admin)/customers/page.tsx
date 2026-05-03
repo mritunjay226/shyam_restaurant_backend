@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { DesktopTopbar } from "@/components/Topbar";
 import {
@@ -9,7 +9,7 @@ import {
   CreditCard, ChevronRight, TrendingUp, Star,
   PhoneCall, Mail, X, ArrowLeft, Banknote,
   ShoppingBag, Building2, Bed, Receipt,
-  SlidersHorizontal, ChevronUp,
+  SlidersHorizontal, ChevronUp, Pencil, Trash2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,16 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 // ─── Utility ─────────────────────────────────────────────────────
 
 function initials(name: string) {
@@ -207,7 +217,29 @@ function LedgerSheet({ guest, onClose }: { guest: any; onClose: () => void }) {
   const tier = tierInfo(guest.totalVisits, guest.totalSpend);
   const avgTicket = guest.totalVisits > 0 ? Math.round(guest.totalSpend / guest.totalVisits) : 0;
 
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingGuest, setEditingGuest] = useState(false);
+  
+  const deleteRoomBooking = useMutation(api.bookings.deleteBooking);
+  const deleteBanquetBooking = useMutation(api.banquet.deleteBanquetBooking);
+  const deleteBill = useMutation(api.billing.deleteBill);
+
+  const handleDelete = async (item: any, type: "room" | "banquet" | "bill") => {
+    if (!window.confirm("Are you sure you want to delete this entry? This action cannot be undone.")) return;
+    
+    try {
+      if (type === "room") await deleteRoomBooking({ bookingId: item._id });
+      else if (type === "banquet") await deleteBanquetBooking({ bookingId: item._id });
+      else if (type === "bill") await deleteBill({ billId: item._id });
+      toast.success("Entry deleted successfully");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to delete entry");
+    }
+  };
+
   return (
+    <>
     <motion.div
       initial={{ x: "100%" }}
       animate={{ x: 0 }}
@@ -230,8 +262,16 @@ function LedgerSheet({ guest, onClose }: { guest: any; onClose: () => void }) {
             <Avatar name={guest.name} size="lg" />
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">{guest.name}</h2>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">{guest.name}</h2>
+                    <button 
+                      onClick={() => setEditingGuest(true)}
+                      className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </div>
                   <div className={`mt-1 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${tier.text}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${tier.dot}`} />
                     {tier.label} Member
@@ -317,6 +357,8 @@ function LedgerSheet({ guest, onClose }: { guest: any; onClose: () => void }) {
                       b.advance > 0 && { label: "Advance", value: inr(b.advance) },
                       b.balance > 0 && { label: "Balance", value: inr(b.balance), warn: true },
                     ].filter(Boolean) as any}
+                    onEdit={() => setEditingItem({ item: b, type: "room" })}
+                    onDelete={() => handleDelete(b, "room")}
                   />
                 ))
               )}
@@ -342,6 +384,8 @@ function LedgerSheet({ guest, onClose }: { guest: any; onClose: () => void }) {
                       b.advance > 0 && { label: "Advance", value: inr(b.advance) },
                       b.balance > 0 && { label: "Balance due", value: inr(b.balance), warn: true },
                     ].filter(Boolean) as any}
+                    onEdit={() => setEditingItem({ item: b, type: "banquet" })}
+                    onDelete={() => handleDelete(b, "banquet")}
                   />
                 ))
               )}
@@ -366,6 +410,8 @@ function LedgerSheet({ guest, onClose }: { guest: any; onClose: () => void }) {
                       b.discountAmount > 0 && { label: "Discount", value: `-${inr(b.discountAmount)}` },
                       b.cgst > 0 && { label: "GST", value: inr(b.cgst + b.sgst) },
                     ].filter(Boolean) as any}
+                    onEdit={() => setEditingItem({ item: b, type: "bill" })}
+                    onDelete={() => handleDelete(b, "bill")}
                   />
                 ))
               )}
@@ -386,45 +432,157 @@ function LedgerSheet({ guest, onClose }: { guest: any; onClose: () => void }) {
           <Mail size={16} /> Send Invoice
         </button>
       </div>
+
+      <EditLedgerModal
+        isOpen={!!editingItem}
+        onClose={() => setEditingItem(null)}
+        item={editingItem?.item}
+        type={editingItem?.type}
+      />
+
+      <EditGuestModal
+        isOpen={editingGuest}
+        onClose={() => setEditingGuest(false)}
+        guest={guest}
+      />
     </motion.div>
+    </>
+  );
+}
+
+// ─── Edit Guest Modal ─────────────────────────────────────────────
+
+function EditGuestModal({ isOpen, onClose, guest }: { isOpen: boolean; onClose: () => void; guest: any }) {
+  const [formData, setFormData] = useState<any>({ ...guest });
+  const updateGuest = useMutation(api.guests.updateGuest);
+
+  const [lastGuestId, setLastGuestId] = useState<string | null>(null);
+  if (guest?._id !== lastGuestId) {
+    setFormData({ ...guest });
+    setLastGuestId(guest?._id || null);
+  }
+
+  const handleSave = async () => {
+    try {
+      await updateGuest({
+        guestId: guest._id,
+        name: formData.name,
+        phone: formData.phone,
+        idType: formData.idType,
+        idNumber: formData.idNumber,
+        notes: formData.notes,
+      });
+      toast.success("Profile updated successfully");
+      onClose();
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to update profile");
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Edit Guest Profile</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label>Full Name</Label>
+            <Input value={formData.name || ""} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+          </div>
+          <div className="grid gap-2">
+            <Label>Phone Number</Label>
+            <Input value={formData.phone || ""} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label>ID Type</Label>
+              <Select value={formData.idType} onValueChange={(v) => setFormData({ ...formData, idType: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select ID" />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Aadhar", "PAN", "Voter ID", "Driving License", "Passport"].map((id) => (
+                    <SelectItem key={id} value={id.toLowerCase().replace(" ", "_")}>{id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>ID Number</Label>
+              <Input value={formData.idNumber || ""} onChange={(e) => setFormData({ ...formData, idNumber: e.target.value })} />
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label>Notes</Label>
+            <Input value={formData.notes || ""} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave}>Save Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 // ─── Ledger card ──────────────────────────────────────────────────
 
 function LedgerCard({
-  icon: Icon, title, subtitle, meta, amount, status, extras = [],
+  icon: Icon, title, subtitle, meta, amount, status, extras = [], onEdit, onDelete,
 }: {
   icon: any; title: string; subtitle: string; meta: string;
   amount: number; status: string;
   extras?: { label: string; value: string; warn?: boolean }[];
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="rounded-2xl border bg-card overflow-hidden shadow-sm">
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full text-left p-4 flex items-start gap-3 hover:bg-muted/30 transition-colors"
-      >
-        <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center text-muted-foreground shrink-0 mt-0.5">
-          <Icon size={16} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <p className="font-semibold text-sm text-foreground leading-tight truncate">{title}</p>
-            <p className="font-bold text-sm text-foreground tabular-nums shrink-0">{inr(amount)}</p>
+      <div className="flex items-start">
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="flex-1 text-left p-4 flex items-start gap-3 hover:bg-muted/30 transition-colors"
+        >
+          <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center text-muted-foreground shrink-0 mt-0.5">
+            <Icon size={16} />
           </div>
-          <div className="flex items-center justify-between gap-2 mt-1.5">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{meta}</p>
-            <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${statusStyle(status)}`}>
-              {status.replace(/_/g, " ")}
-            </span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-semibold text-sm text-foreground leading-tight truncate">{title}</p>
+              <p className="font-bold text-sm text-foreground tabular-nums shrink-0">{inr(amount)}</p>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-1.5">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{meta}</p>
+              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${statusStyle(status)}`}>
+                {status.replace(/_/g, " ")}
+              </span>
+            </div>
           </div>
+          {extras.length > 0 && (
+            <ChevronUp size={14} className={`text-muted-foreground shrink-0 mt-1 transition-transform ${expanded ? "" : "rotate-180"}`} />
+          )}
+        </button>
+        
+        {/* Edit/Delete Actions */}
+        <div className="flex flex-col border-l border-border/50">
+          <button 
+            onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
+            className="p-3 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
+          >
+            <Pencil size={14} />
+          </button>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+            className="p-3 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors border-t border-border/50"
+          >
+            <Trash2 size={14} />
+          </button>
         </div>
-        {extras.length > 0 && (
-          <ChevronUp size={14} className={`text-muted-foreground shrink-0 mt-1 transition-transform ${expanded ? "" : "rotate-180"}`} />
-        )}
-      </button>
+      </div>
 
       <AnimatePresence>
         {expanded && extras.length > 0 && (
@@ -446,6 +604,216 @@ function LedgerCard({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ─── Edit Ledger Modal ────────────────────────────────────────────
+
+function EditLedgerModal({ isOpen, onClose, item, type }: { isOpen: boolean; onClose: () => void; item: any; type: "room" | "banquet" | "bill" }) {
+  const [formData, setFormData] = useState<any>({});
+  const updateRoomBooking = useMutation(api.bookings.updateBooking);
+  const updateBanquetBooking = useMutation(api.banquet.updateBanquetBooking);
+  const updateBill = useMutation(api.billing.updateBill);
+
+  const [lastItemId, setLastItemId] = useState<string | null>(null);
+  const currentId = item?._id || null;
+
+  if (currentId !== lastItemId) {
+    setFormData(item ? { ...item } : {});
+    setLastItemId(currentId);
+  }
+
+  const handleSave = async () => {
+    try {
+      if (type === "room") {
+        await updateRoomBooking({
+          bookingId: item._id,
+          guestName: formData.guestName,
+          guestPhone: formData.guestPhone,
+          checkIn: formData.checkIn,
+          checkOut: formData.checkOut,
+          tariff: Number(formData.tariff),
+          advance: Number(formData.advance),
+          totalAmount: Number(formData.totalAmount),
+          status: formData.status,
+          notes: formData.notes,
+        });
+      } else if (type === "banquet") {
+        await updateBanquetBooking({
+          bookingId: item._id,
+          eventName: formData.eventName,
+          eventType: formData.eventType,
+          eventDate: formData.eventDate,
+          timeSlot: formData.timeSlot,
+          guestName: formData.guestName,
+          guestPhone: formData.guestPhone,
+          guestCount: Number(formData.guestCount),
+          totalAmount: Number(formData.totalAmount),
+          advance: Number(formData.advance),
+          notes: formData.notes,
+        });
+      } else if (type === "bill") {
+        await updateBill({
+          billId: item._id,
+          guestName: formData.guestName,
+          subtotal: Number(formData.subtotal),
+          cgst: Number(formData.cgst),
+          sgst: Number(formData.sgst),
+          totalAmount: Number(formData.totalAmount),
+          status: formData.status,
+          paymentMethod: formData.paymentMethod,
+          createdAt: formData.createdAt,
+        });
+      }
+      toast.success("Updated successfully");
+      onClose();
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to update");
+    }
+  };
+
+  if (!item) return null;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Edit Ledger Entry</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4 py-4 max-h-[60vh] overflow-auto px-1">
+          {type === "room" && (
+            <>
+              <div className="grid gap-2">
+                <Label>Guest Name</Label>
+                <Input value={formData.guestName || ""} onChange={(e) => setFormData({ ...formData, guestName: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Check-in</Label>
+                  <Input type="date" value={formData.checkIn || ""} onChange={(e) => setFormData({ ...formData, checkIn: e.target.value })} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Check-out</Label>
+                  <Input type="date" value={formData.checkOut || ""} onChange={(e) => setFormData({ ...formData, checkOut: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Tariff</Label>
+                  <Input type="number" value={formData.tariff || 0} onChange={(e) => setFormData({ ...formData, tariff: e.target.value })} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Total Amount</Label>
+                  <Input type="number" value={formData.totalAmount || 0} onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Status</Label>
+                <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["confirmed", "checked_in", "checked_out", "cancelled", "pending"].map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
+
+          {type === "banquet" && (
+            <>
+              <div className="grid gap-2">
+                <Label>Event Name</Label>
+                <Input value={formData.eventName || ""} onChange={(e) => setFormData({ ...formData, eventName: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Date</Label>
+                  <Input type="date" value={formData.eventDate || ""} onChange={(e) => setFormData({ ...formData, eventDate: e.target.value })} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Time Slot</Label>
+                  <Select value={formData.timeSlot} onValueChange={(v) => setFormData({ ...formData, timeSlot: v })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["morning", "evening", "full_day"].map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Guests</Label>
+                  <Input type="number" value={formData.guestCount || 0} onChange={(e) => setFormData({ ...formData, guestCount: e.target.value })} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Total Amount</Label>
+                  <Input type="number" value={formData.totalAmount || 0} onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {type === "bill" && (
+            <>
+              <div className="grid gap-2">
+                <Label>Bill Type</Label>
+                <Input value={formData.billType || ""} disabled />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Subtotal</Label>
+                  <Input type="number" value={formData.subtotal || 0} onChange={(e) => setFormData({ ...formData, subtotal: e.target.value })} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Total Amount</Label>
+                  <Input type="number" value={formData.totalAmount || 0} onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>CGST</Label>
+                  <Input type="number" value={formData.cgst || 0} onChange={(e) => setFormData({ ...formData, cgst: e.target.value })} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>SGST</Label>
+                  <Input type="number" value={formData.sgst || 0} onChange={(e) => setFormData({ ...formData, sgst: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Date</Label>
+                <Input type="date" value={formData.createdAt || ""} onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Status</Label>
+                <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["paid", "pending", "generated", "due"].map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave}>Save Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -487,8 +855,10 @@ function LedgerEmpty({ label, icon: Icon }: { label: string; icon: any }) {
 export default function CustomersPage() {
   const guests = useQuery(api.guests.list) || [];
   const [search, setSearch] = useState("");
-  const [selectedGuest, setSelectedGuest] = useState<any>(null);
+  const [selectedGuestId, setSelectedGuestId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "spend" | "visits">("spend");
+
+  const selectedGuest = guests.find((g: any) => g._id === selectedGuestId);
 
   const filtered = guests
     .filter(
@@ -572,7 +942,7 @@ export default function CustomersPage() {
                 <tbody>
                   <AnimatePresence>
                     {filtered.map((guest) => (
-                      <GuestRow key={guest._id} guest={guest} onClick={() => setSelectedGuest(guest)} />
+                      <GuestRow key={guest._id} guest={guest} onClick={() => setSelectedGuestId(guest._id)} />
                     ))}
                   </AnimatePresence>
                 </tbody>
@@ -587,7 +957,7 @@ export default function CustomersPage() {
             <div className="space-y-2 pb-24 px-0.5">
               <AnimatePresence>
                 {filtered.map((guest) => (
-                  <GuestCard key={guest._id} guest={guest} onClick={() => setSelectedGuest(guest)} />
+                  <GuestCard key={guest._id} guest={guest} onClick={() => setSelectedGuestId(guest._id)} />
                 ))}
               </AnimatePresence>
               {filtered.length === 0 && <EmptySearch search={search} onClear={() => setSearch("")} />}
@@ -605,10 +975,10 @@ export default function CustomersPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setSelectedGuest(null)}
+              onClick={() => setSelectedGuestId(null)}
               className="fixed inset-0 bg-black/30 z-40 sm:hidden"
             />
-            <LedgerSheet guest={selectedGuest} onClose={() => setSelectedGuest(null)} />
+            <LedgerSheet guest={selectedGuest} onClose={() => setSelectedGuestId(null)} />
           </>
         )}
       </AnimatePresence>

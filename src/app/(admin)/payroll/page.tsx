@@ -52,10 +52,10 @@ export default function PayrollPage() {
   const months = Array.from({ length: 6 }).map((_, i) => subMonths(new Date(), i));
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50/50">
+    <div className="flex flex-col min-h-screen bg-gray-50/50">
       <DesktopTopbar title="Payroll & Salary Ledger" />
 
-      <main className="flex-1 overflow-hidden flex flex-col p-4 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
+      <main className="flex-1 flex flex-col p-4 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
         
         {/* Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0">
@@ -122,18 +122,18 @@ export default function PayrollPage() {
         </div>
 
         {/* Ledger Table */}
-        <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-          <div className="overflow-auto flex-1 h-full scrollbar-hide">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+          <div className="w-full overflow-x-auto scrollbar-hide">
             <table className="w-full text-left border-separate border-spacing-0">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-gray-50/80 backdrop-blur-md">
-                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100">Staff Details</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100">Attendance</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100">Salary Baseline</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100">Pending Adv.</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100">Net Final Pay</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100">Status</th>
-                  <th className="px-6 py-4 text-right border-b border-gray-100"></th>
+              <thead>
+                <tr className="bg-gray-50/80 backdrop-blur-md sticky top-[64px] z-10">
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100 bg-gray-50/80 backdrop-blur-md">Staff Details</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100 bg-gray-50/80 backdrop-blur-md">Attendance</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100 bg-gray-50/80 backdrop-blur-md">Salary Baseline</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100 bg-gray-50/80 backdrop-blur-md">Pending Adv.</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100 bg-gray-50/80 backdrop-blur-md">Net Final Pay</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100 bg-gray-50/80 backdrop-blur-md">Status</th>
+                  <th className="px-6 py-4 text-right border-b border-gray-100 bg-gray-50/80 backdrop-blur-md"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -165,9 +165,16 @@ export default function PayrollPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="px-2 py-0.5 rounded-lg bg-gray-100 text-gray-500 font-black tabular-nums text-[10px]">
-                          {row.workedDays} / 30 d
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="px-2 py-0.5 rounded-lg bg-gray-100 text-gray-500 font-black tabular-nums text-[10px] w-fit">
+                            {row.workedDays} / 30 d
+                          </span>
+                          {row.paidLeavesTaken > 0 && (
+                            <span className="px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-600 font-black tabular-nums text-[9px] w-fit">
+                              {row.effectivePaidLeaves} Paid Leaves
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <span className="text-sm font-black text-gray-600 tabular-nums">₹{row.baseSalary.toLocaleString()}</span>
@@ -254,6 +261,7 @@ function StaffLedgerSheet({ staff, month, onClose }: { staff: any; month: string
     ifsc: fullStaffDetails?.ifsc || "",
     upiId: fullStaffDetails?.upiId || "",
     method: (fullStaffDetails?.upiId ? 'upi' : 'bank') as 'bank' | 'upi',
+    paidLeavesPerMonth: staff.totalPaidLeavesAllowed || 2,
     advanceAmount: "",
     advanceReason: ""
   });
@@ -270,7 +278,8 @@ function StaffLedgerSheet({ staff, month, onClose }: { staff: any; month: string
         accountNo: fullStaffDetails.accountNo || "",
         ifsc: fullStaffDetails.ifsc || "",
         upiId: fullStaffDetails.upiId || "",
-        method: fullStaffDetails.upiId ? 'upi' : 'bank'
+        method: fullStaffDetails.upiId ? 'upi' : 'bank',
+        paidLeavesPerMonth: fullStaffDetails.paidLeavesPerMonth ?? staff.totalPaidLeavesAllowed ?? 2,
       }));
     }
   }, [fullStaffDetails]);
@@ -287,6 +296,7 @@ function StaffLedgerSheet({ staff, month, onClose }: { staff: any; month: string
         accountNo: formValues.accountNo,
         ifsc: formValues.ifsc,
         upiId: formValues.upiId,
+        paidLeavesPerMonth: Number(formValues.paidLeavesPerMonth),
       });
       toast.success("Financial profile updated");
       setModalMode(null);
@@ -374,16 +384,17 @@ function StaffLedgerSheet({ staff, month, onClose }: { staff: any; month: string
            <div className="bg-white rounded-2xl p-4 border border-gray-100 text-center shadow-sm">
               <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Base Salary</p>
               <p className="text-md font-black text-gray-900 tabular-nums">₹{staff.baseSalary.toLocaleString()}</p>
+              <p className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">₹{staff.dailyRate}/day</p>
            </div>
            <div className="bg-white rounded-2xl p-4 border border-gray-100 text-center shadow-sm">
-              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Debt/Adv.</p>
-              <p className={cn("text-md font-black tabular-nums", staff.pendingAdvances > 0 ? "text-rose-600" : "text-gray-900")}>
-                ₹{staff.pendingAdvances.toLocaleString()}
-              </p>
+              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Attendance</p>
+              <p className="text-md font-black text-gray-900 tabular-nums">{staff.workedDays}d</p>
+              <p className="text-[8px] font-bold text-indigo-500 uppercase tracking-tighter">{staff.effectivePaidLeaves} Paid Leaves</p>
            </div>
            <div className="bg-white rounded-2xl p-4 border border-gray-100 text-center shadow-sm">
-              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Proj. Net</p>
+              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Net Payable</p>
               <p className="text-md font-black text-green-600 tabular-nums">₹{staff.netPay.toLocaleString()}</p>
+              <p className="text-[8px] font-bold text-rose-500 uppercase tracking-tighter">-₹{staff.unpaidDeductions} Unpaid</p>
            </div>
         </div>
       </div>
@@ -469,10 +480,17 @@ function StaffLedgerSheet({ staff, month, onClose }: { staff: any; month: string
                        <div className="space-y-1">
                           <p className="text-[9px] font-black text-violet-600/60 uppercase tracking-widest leading-none">Salary / Month</p>
                           <p className="text-md font-black text-gray-900 tabular-nums">₹{staff.baseSalary.toLocaleString()}</p>
+                          <p className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">Rate: ₹{staff.dailyRate}/day</p>
                        </div>
                        <div className="space-y-1">
-                          <p className="text-[9px] font-black text-violet-600/60 uppercase tracking-widest leading-none">Status</p>
-                          <p className="text-md font-black text-gray-900 uppercase tracking-widest">{staff.workedDays} Days <span className="text-[9px] text-gray-400">Worked</span></p>
+                          <p className="text-[9px] font-black text-violet-600/60 uppercase tracking-widest leading-none">Paid Leave Limit</p>
+                          <p className="text-md font-black text-gray-900 uppercase tracking-widest">{staff.totalPaidLeavesAllowed} Days <span className="text-[9px] text-gray-400">/ Month</span></p>
+                       </div>
+                       <div className="space-y-1 mt-4">
+                          <p className="text-[9px] font-black text-violet-600/60 uppercase tracking-widest leading-none">Current Attendance</p>
+                          <p className="text-xs font-black text-gray-900 uppercase tracking-widest">
+                             {staff.presentDays}P / {staff.halfDays}H / {staff.paidLeavesTaken}L
+                          </p>
                        </div>
                        
                        <div className="col-span-2 space-y-4 pt-6 border-t border-gray-50">
@@ -548,14 +566,25 @@ function StaffLedgerSheet({ staff, month, onClose }: { staff: any; month: string
 
                   {modalMode === 'edit' && (
                      <form onSubmit={handleUpdateFinancials} className="space-y-6">
-                        <div className="space-y-2">
-                           <Label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Monthly Base Salary</Label>
-                           <Input 
-                              type="number" 
-                              value={formValues.baseSalary}
-                              onChange={e => setFormValues({...formValues, baseSalary: e.target.value})}
-                              className="h-12 rounded-2xl bg-gray-50 border-gray-100 font-black text-xs px-5 focus:ring-violet-500/20" 
-                           />
+                        <div className="grid grid-cols-2 gap-4">
+                           <div className="space-y-2">
+                              <Label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Monthly Base Salary</Label>
+                              <Input 
+                                 type="number" 
+                                 value={formValues.baseSalary}
+                                 onChange={e => setFormValues({...formValues, baseSalary: e.target.value})}
+                                 className="h-12 rounded-2xl bg-gray-50 border-gray-100 font-black text-xs px-5 focus:ring-violet-500/20" 
+                              />
+                           </div>
+                           <div className="space-y-2">
+                              <Label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Paid Leaves / Mo</Label>
+                              <Input 
+                                 type="number" 
+                                 value={formValues.paidLeavesPerMonth}
+                                 onChange={e => setFormValues({...formValues, paidLeavesPerMonth: e.target.value})}
+                                 className="h-12 rounded-2xl bg-gray-50 border-gray-100 font-black text-xs px-5 focus:ring-violet-500/20" 
+                              />
+                           </div>
                         </div>
                         <div className="space-y-3">
                            <Label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Preferred Method</Label>

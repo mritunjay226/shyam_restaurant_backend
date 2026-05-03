@@ -650,4 +650,59 @@ export const settleDueBill = mutation({
 
     return args.billId;
   },
-});
+});
+
+export const updateBill = mutation({
+  args: {
+    billId: v.id("bills"),
+    guestName: v.optional(v.string()),
+    subtotal: v.optional(v.number()),
+    cgst: v.optional(v.number()),
+    sgst: v.optional(v.number()),
+    totalAmount: v.optional(v.number()),
+    status: v.optional(v.string()),
+    paymentMethod: v.optional(v.string()),
+    createdAt: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { billId, ...updates } = args;
+    const old = await ctx.db.get(billId);
+    if (!old) throw new Error("Bill not found");
+
+    if (updates.totalAmount !== undefined) {
+      // Try to adjust guest spend if we can find them by name
+      const guest = await ctx.db
+        .query("guests")
+        .withIndex("by_name", (q) => q.eq("name", old.guestName))
+        .first();
+      if (guest) {
+        await ctx.db.patch(guest._id, {
+          totalSpend: Math.max(0, guest.totalSpend - old.totalAmount + updates.totalAmount),
+        });
+      }
+    }
+
+    return await ctx.db.patch(billId, updates);
+  },
+});
+
+export const deleteBill = mutation({
+  args: { billId: v.id("bills") },
+  handler: async (ctx, args) => {
+    const old = await ctx.db.get(args.billId);
+    if (!old) throw new Error("Bill not found");
+
+    const guest = await ctx.db
+      .query("guests")
+      .withIndex("by_name", (q) => q.eq("name", old.guestName))
+      .first();
+    if (guest) {
+      await ctx.db.patch(guest._id, {
+        totalSpend: Math.max(0, guest.totalSpend - old.totalAmount),
+      });
+    }
+
+    await ctx.db.delete(args.billId);
+  },
+});
+

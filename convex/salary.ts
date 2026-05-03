@@ -26,6 +26,7 @@ export const updateStaffSalaryInfo = mutation({
     accountNo: v.optional(v.string()),
     ifsc: v.optional(v.string()),
     upiId: v.optional(v.string()),
+    paidLeavesPerMonth: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await verifyAdminAuth(ctx, args.token);
@@ -37,6 +38,7 @@ export const updateStaffSalaryInfo = mutation({
     if (args.accountNo !== undefined) updates.accountNo = args.accountNo;
     if (args.ifsc !== undefined) updates.ifsc = args.ifsc;
     if (args.upiId !== undefined) updates.upiId = args.upiId;
+    if (args.paidLeavesPerMonth !== undefined) updates.paidLeavesPerMonth = args.paidLeavesPerMonth;
     
     await ctx.db.patch(args.staffId, updates);
     return { success: true };
@@ -76,15 +78,26 @@ export const getMonthlyPayrollSnapshot = query({
     const payments = await ctx.db.query("salaryPayments").filter(q => q.eq(q.field("month"), args.month)).collect();
 
     return staff.map(s => {
-      // 1. Calculate Worked Days
+      // 1. Calculate Worked Days and Leaves
       const staffAttend = attendance.filter(a => a.staffId === s._id && a.date.startsWith(args.month));
+      
       const presentDays = staffAttend.filter(a => a.status === "present").length;
       const halfDays = staffAttend.filter(a => a.status === "half_day").length;
-      const workedDays = presentDays + (halfDays * 0.5);
+      const paidLeavesTaken = staffAttend.filter(a => a.status === "paid_leave").length;
+      const absentDaysRecorded = staffAttend.filter(a => a.status === "absent").length;
+
+      const totalPaidLeavesAllowed = s.paidLeavesPerMonth ?? 2;
+      const effectivePaidLeaves = Math.min(paidLeavesTaken, totalPaidLeavesAllowed);
+      const excessLeavesAsUnpaid = Math.max(0, paidLeavesTaken - totalPaidLeavesAllowed);
+      
+      const workedDays = presentDays + (halfDays * 0.5) + effectivePaidLeaves;
+      const unpaidDays = absentDaysRecorded + excessLeavesAsUnpaid;
 
       // 2. Base Calculation (Assume 30-day month)
       const base = s.baseSalary || 0;
-      const earnings = Math.round((base / 30) * workedDays);
+      const dailyRate = Math.round(base / 30);
+      const earnings = Math.round(dailyRate * workedDays);
+      const unpaidDeductions = Math.round(dailyRate * unpaidDays);
 
       // 3. Advances
       const staffAdvances = advances.filter(a => a.staffId === s._id);
@@ -97,8 +110,16 @@ export const getMonthlyPayrollSnapshot = query({
         name: s.name,
         role: s.role,
         baseSalary: base,
+        dailyRate,
         workedDays,
+        presentDays,
+        halfDays,
+        paidLeavesTaken,
+        effectivePaidLeaves,
+        unpaidDays,
+        totalPaidLeavesAllowed,
         earnings,
+        unpaidDeductions,
         pendingAdvances: totalPendingAdvances,
         netPay: Math.max(0, earnings - totalPendingAdvances),
         status: payment ? "paid" : "pending",

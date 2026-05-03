@@ -321,3 +321,27 @@ export const completeBanquetBooking = mutation({
   handler: async (ctx, args) =>
     ctx.db.patch(args.bookingId, { status: "completed" }),
 });
+
+export const deleteBanquetBooking = mutation({
+  args: { bookingId: v.id("banquetBookings") },
+  handler: async (ctx, args) => {
+    const old = await ctx.db.get(args.bookingId);
+    if (!old) throw new Error("Booking not found");
+
+    // Try to find the guest profile and update stats
+    const guest = await ctx.db
+      .query("guests")
+      .withIndex("by_phone", (q) => q.eq("phone", old.guestPhone))
+      .first();
+
+    if (guest) {
+      await ctx.db.patch(guest._id, {
+        totalSpend: Math.max(0, guest.totalSpend - old.totalAmount),
+        totalVisits: Math.max(0, guest.totalVisits - 1),
+      });
+    }
+
+    await ctx.db.delete(args.bookingId);
+  },
+});
+

@@ -1,4 +1,4 @@
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 /** List all unique guest profiles */
@@ -26,21 +26,19 @@ export const getHistory = query({
     // 1. Room Bookings
     const roomBookings = await ctx.db
       .query("bookings")
-      .filter((q) => q.eq(q.field("guestPhone"), args.phone))
+      .withIndex("by_guestPhone", (q) => q.eq("guestPhone", args.phone))
       .collect();
 
     // 2. Banquet Bookings
     const banquetBookings = await ctx.db
       .query("banquetBookings")
-      .filter((q) => q.eq(q.field("guestPhone"), args.phone))
+      .withIndex("by_guestPhone", (q) => q.eq("guestPhone", args.phone))
       .collect();
 
     // 3. Bills (all bills for this guest name)
-    // Note: Guest name matching might be fuzzy, but for now we use exact or phone if bills had phone
-    // Currently bills only have guestName.
     const bills = await ctx.db
       .query("bills")
-      .filter((q) => q.eq(q.field("guestName"), args.name))
+      .withIndex("by_guestName", (q) => q.eq("guestName", args.name))
       .collect();
 
     return {
@@ -48,5 +46,20 @@ export const getHistory = query({
       banquetBookings: banquetBookings.sort((a,b) => b._creationTime - a._creationTime),
       bills: bills.sort((a,b) => b._creationTime - a._creationTime),
     };
+  },
+});
+
+export const updateGuest = mutation({
+  args: {
+    guestId: v.id("guests"),
+    name: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    idType: v.optional(v.string()),
+    idNumber: v.optional(v.string()),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { guestId, ...updates } = args;
+    return await ctx.db.patch(guestId, updates);
   },
 });

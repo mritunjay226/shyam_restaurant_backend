@@ -46,7 +46,8 @@ export default defineSchema({
     .index("by_checkIn", ["checkIn"])
     .index("by_checkOut", ["checkOut"])
     .index("by_trackingCode", ["trackingCode"])
-    .index("by_razorpayOrderId", ["razorpayOrderId"]),
+    .index("by_razorpayOrderId", ["razorpayOrderId"])
+    .index("by_guestPhone", ["guestPhone"]),
 
   // GUEST PROFILES (repeat guest history)
   guests: defineTable({
@@ -56,7 +57,8 @@ export default defineSchema({
     idNumber: v.optional(v.string()),
     totalVisits: v.number(),
     totalSpend: v.number(),
-  }).index("by_phone", ["phone"]),
+  }).index("by_phone", ["phone"])
+    .index("by_name", ["name"]),
 
   // MENU ITEMS
   menuItems: defineTable({
@@ -141,7 +143,8 @@ export default defineSchema({
         })
       )
     ),
-  }).index("by_eventDate", ["eventDate"]),
+  }).index("by_eventDate", ["eventDate"])
+    .index("by_guestPhone", ["guestPhone"]),
 
   // FINAL BILLS
   bills: defineTable({
@@ -171,7 +174,8 @@ export default defineSchema({
   })
     .index("by_createdAt", ["createdAt"])
     .index("by_status", ["status"])
-    .index("by_billType_date", ["billType", "createdAt"]),
+    .index("by_billType_date", ["billType", "createdAt"])
+    .index("by_guestName", ["guestName"]),
 
   // HOTEL SETTINGS
   hotelSettings: defineTable({
@@ -209,12 +213,13 @@ export default defineSchema({
     accountNo: v.optional(v.string()),
     ifsc: v.optional(v.string()),
     upiId: v.optional(v.string()),
+    paidLeavesPerMonth: v.optional(v.number()),
   }).index("by_pin", ["pin"]),
 
   attendance: defineTable({
     staffId: v.id("staff"),
     date: v.string(),              // "YYYY-MM-DD"
-    status: v.string(),            // "present", "absent", "half_day"
+    status: v.string(),            // "present", "absent", "half_day", "paid_leave"
     notes: v.optional(v.string()),
   }).index("by_staff_date", ["staffId", "date"])
     .index("by_date", ["date"]),

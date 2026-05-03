@@ -15,6 +15,7 @@ const STATUS_OPTIONS = [
   { id: "present", label: "Present", icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
   { id: "absent",  label: "Absent",  icon: XCircle,      color: "text-rose-600",    bg: "bg-rose-50",    border: "border-rose-200" },
   { id: "half_day", label: "Half Day", icon: Clock,      color: "text-amber-600",   bg: "bg-amber-50",   border: "border-amber-200" },
+  { id: "paid_leave", label: "Paid Leave", icon: CalendarIcon, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-200" },
 ];
 
 export default function AttendancePage() {

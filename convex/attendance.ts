@@ -22,7 +22,7 @@ export const markDailyAttendance = mutation({
     date: v.string(), // "YYYY-MM-DD"
     records: v.array(v.object({
       staffId: v.id("staff"),
-      status: v.string(), // "present", "absent", "half_day"
+      status: v.string(), // "present", "absent", "half_day", "paid_leave"
       notes: v.optional(v.string()),
     })),
   },

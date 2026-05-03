@@ -477,3 +477,57 @@ export const confirmPaymentByOrderId = mutation({
     return { success: true, trackingCode: booking.trackingCode };
   },
 });
+
+export const updateBooking = mutation({
+  args: {
+    bookingId: v.id("bookings"),
+    guestName: v.optional(v.string()),
+    guestPhone: v.optional(v.string()),
+    checkIn: v.optional(v.string()),
+    checkOut: v.optional(v.string()),
+    tariff: v.optional(v.number()),
+    advance: v.optional(v.number()),
+    totalAmount: v.optional(v.number()),
+    status: v.optional(v.string()),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { bookingId, ...updates } = args;
+    const old = await ctx.db.get(bookingId);
+    if (!old) throw new Error("Booking not found");
+
+    if (updates.totalAmount !== undefined && old.guestId) {
+      const guest = await ctx.db.get(old.guestId);
+      if (guest) {
+        await ctx.db.patch(old.guestId, {
+          totalSpend: Math.max(0, guest.totalSpend - old.totalAmount + updates.totalAmount),
+        });
+      }
+    }
+
+    const newTotal = updates.totalAmount ?? old.totalAmount;
+    const newAdvance = updates.advance ?? old.advance;
+    const balance = newTotal - newAdvance;
+
+    return await ctx.db.patch(bookingId, { ...updates, balance });
+  },
+});
+
+export const deleteBooking = mutation({
+  args: { bookingId: v.id("bookings") },
+  handler: async (ctx, args) => {
+    const old = await ctx.db.get(args.bookingId);
+    if (!old) throw new Error("Booking not found");
+
+    if (old.guestId) {
+      const guest = await ctx.db.get(old.guestId);
+      if (guest) {
+        await ctx.db.patch(old.guestId, {
+          totalSpend: Math.max(0, guest.totalSpend - old.totalAmount),
+          totalVisits: Math.max(0, guest.totalVisits - 1),
+        });
+      }
+    }
+    await ctx.db.delete(args.bookingId);
+  },
+});
