@@ -259,7 +259,7 @@ function LedgerSheet({ guest, onClose }: { guest: any; onClose: () => void }) {
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
       transition={{ type: "spring", damping: 28, stiffness: 280 }}
-      className="fixed inset-0 sm:inset-auto sm:right-0 sm:top-0 sm:bottom-0 sm:w-[520px] md:w-[580px] bg-background z-50 flex flex-col shadow-2xl border-l border-border"
+      className="fixed inset-0 sm:inset-auto sm:right-0 sm:top-0 sm:bottom-0 sm:w-[520px] md:w-[580px] bg-background  z-50 flex flex-col shadow-2xl border-l border-border pt-5"
     >
       {/* Header */}
       <div className="shrink-0 bg-muted/20 border-b border-border">
@@ -506,7 +506,7 @@ function EditGuestModal({ isOpen, onClose, guest }: { isOpen: boolean; onClose: 
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] ">
         <DialogHeader>
           <DialogTitle>Edit Guest Profile</DialogTitle>
         </DialogHeader>
