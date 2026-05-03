@@ -270,7 +270,7 @@ function TableBillCard({
   settings: any;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isGstBill, setIsGstBill] = useState(true);
+  const [isGstBill, setIsGstBill] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [discount, setDiscount] = useState("");
   const [amountPaidInput, setAmountPaidInput] = useState("");
@@ -1080,7 +1080,7 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
           course: c.course || undefined
         })),
         paymentMethod: "cash",
-        isGstBill: true,
+        isGstBill: false,
       });
       toast.success(`Quick checkout for ${activeTable} done!`);
       clearCurrentCart();
@@ -1229,9 +1229,9 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
   const foodItems = currentCart.filter(i => !isBeverage(i.category));
   const beverageItems = currentCart.filter(i => isBeverage(i.category));
 
-  const foodGST = foodItems.reduce((a, o) => a + o.qty * o.price, 0) * 0.05;
-  const bevGST = beverageItems.reduce((a, o) => a + o.qty * o.price, 0) * 0.18;
-  const grandTotal = subtotal + foodGST + bevGST;
+  const foodGST = 0;
+  const bevGST = 0;
+  const grandTotal = subtotal;
 
   return (
     /* Page wrapper: flex column */

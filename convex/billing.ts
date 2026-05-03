@@ -443,8 +443,12 @@ export const directCheckoutOrder = mutation({
     let cgst = 0;
     let sgst = 0;
 
+    const settings = await ctx.db.query("hotelSettings").first();
+    const foodGstRate = (settings?.foodGst || 5) / 100;
+    const beverageGstRate = (settings?.foodGst || 5) / 100; // Defaulting beverages to same as food if not specified
+
     if (args.isGstBill) {
-      gstAmount = foodTotal * 0.05 + beverageTotal * 0.18;
+      gstAmount = foodTotal * foodGstRate + beverageTotal * beverageGstRate;
       cgst = gstAmount / 2;
       sgst = gstAmount / 2;
     }
