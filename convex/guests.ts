@@ -63,3 +63,45 @@ export const updateGuest = mutation({
     return await ctx.db.patch(guestId, updates);
   },
 });
+
+export const deleteGuest = mutation({
+  args: { guestId: v.id("guests") },
+  handler: async (ctx, args) => {
+    const guest = await ctx.db.get(args.guestId);
+    if (!guest) throw new Error("Guest not found");
+
+    const { name, phone } = guest;
+
+    // 1. Delete Room Bookings
+    const roomBookings = await ctx.db
+      .query("bookings")
+      .withIndex("by_guestPhone", (q) => q.eq("guestPhone", phone))
+      .collect();
+    for (const b of roomBookings) {
+      await ctx.db.delete(b._id);
+    }
+
+    // 2. Delete Banquet Bookings
+    const banquetBookings = await ctx.db
+      .query("banquetBookings")
+      .withIndex("by_guestPhone", (q) => q.eq("guestPhone", phone))
+      .collect();
+    for (const b of banquetBookings) {
+      await ctx.db.delete(b._id);
+    }
+
+    // 3. Delete Bills
+    const bills = await ctx.db
+      .query("bills")
+      .withIndex("by_guestName", (q) => q.eq("guestName", name))
+      .collect();
+    for (const b of bills) {
+      await ctx.db.delete(b._id);
+    }
+
+    // 4. Delete the Guest Profile
+    await ctx.db.delete(args.guestId);
+
+    return { success: true };
+  },
+});

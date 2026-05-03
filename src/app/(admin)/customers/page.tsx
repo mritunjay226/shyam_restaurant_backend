@@ -223,6 +223,20 @@ function LedgerSheet({ guest, onClose }: { guest: any; onClose: () => void }) {
   const deleteRoomBooking = useMutation(api.bookings.deleteBooking);
   const deleteBanquetBooking = useMutation(api.banquet.deleteBanquetBooking);
   const deleteBill = useMutation(api.billing.deleteBill);
+  const deleteGuest = useMutation(api.guests.deleteGuest);
+
+  const handleDeleteCustomer = async () => {
+    if (!window.confirm(`Are you sure you want to delete ${guest.name}? This will permanently remove their profile, all room/banquet bookings, and bills. This action cannot be undone.`)) return;
+
+    try {
+      await deleteGuest({ guestId: guest._id });
+      toast.success("Customer and all associated data deleted");
+      onClose();
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to delete customer");
+    }
+  };
 
   const handleDelete = async (item: any, type: "room" | "banquet" | "bill") => {
     if (!window.confirm("Are you sure you want to delete this entry? This action cannot be undone.")) return;
@@ -265,12 +279,22 @@ function LedgerSheet({ guest, onClose }: { guest: any; onClose: () => void }) {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h2 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">{guest.name}</h2>
-                    <button 
-                      onClick={() => setEditingGuest(true)}
-                      className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
-                    >
-                      <Pencil size={14} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => setEditingGuest(true)}
+                        className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
+                        title="Edit Profile"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button 
+                        onClick={handleDeleteCustomer}
+                        className="p-1 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                        title="Delete Customer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                   <div className={`mt-1 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${tier.text}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${tier.dot}`} />
