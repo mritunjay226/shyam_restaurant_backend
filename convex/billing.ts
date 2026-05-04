@@ -48,6 +48,7 @@ export const generateRoomBill = mutation({
     splitPayments: v.optional(v.array(v.object({
       method: v.string(),
       amount: v.number(),
+      timestamp: v.optional(v.number()),
     }))),
   },
   handler: async (ctx, args) => {
@@ -144,7 +145,10 @@ export const generateRoomBill = mutation({
       advancePaid: advance > 0 ? advance : undefined,
       amountDue: Math.round(amountDue * 100) / 100,
       paymentMethod: args.paymentMethod,
-      splitPayments: args.splitPayments,
+      splitPayments: args.splitPayments?.map(s => ({
+        ...s,
+        timestamp: Date.now()
+      })),
       status: "generated",
       createdAt: new Date().toISOString().split("T")[0],
     });
@@ -220,6 +224,7 @@ export const generateBanquetBill = mutation({
         v.object({
           method: v.string(),
           amount: v.number(),
+          timestamp: v.optional(v.number()),
         })
       )
     ),
@@ -262,7 +267,10 @@ export const generateBanquetBill = mutation({
       sgst: Math.round(sgst * 100) / 100,
       totalAmount: Math.round(totalAmount * 100) / 100,
       paymentMethod: args.paymentMethod,
-      splitPayments: initialSplit,
+      splitPayments: initialSplit.map((s: any) => ({
+        ...s,
+        timestamp: s.timestamp || Date.now()
+      })),
       amountPaid: totalPaid,
       amountDue: amountDue,
       status: status,
@@ -292,6 +300,7 @@ export const generateTableBill = mutation({
     splitPayments: v.optional(v.array(v.object({
       method: v.string(),
       amount: v.number(),
+      timestamp: v.optional(v.number()),
     }))),
   },
   handler: async (ctx, args) => {
@@ -384,7 +393,10 @@ export const generateTableBill = mutation({
       amountPaid: Math.round(amountPaid * 100) / 100,
       amountDue: Math.round(amountDue * 100) / 100,
       paymentMethod: args.paymentMethod,
-      splitPayments: args.splitPayments,
+      splitPayments: args.splitPayments?.map(s => ({
+        ...s,
+        timestamp: Date.now()
+      })),
       status: status,
       createdAt: new Date().toISOString().split("T")[0],
     });
@@ -624,16 +636,17 @@ export const settleDueBill = mutation({
     // Track payment history if splitPayments is present or create it
     const newSplitPayments = bill.splitPayments ? [...bill.splitPayments] : [];
     if (bill.paymentMethod && bill.paymentMethod !== "split" && newSplitPayments.length === 0) {
-      // Convert initial single payment to split format to keep history
       newSplitPayments.push({
         method: bill.paymentMethod,
         amount: bill.amountPaid || 0,
+        timestamp: bill._creationTime, // Assume initial payment was at bill creation
       });
     }
     
     newSplitPayments.push({
       method: args.paymentMethod,
       amount: args.amount,
+      timestamp: Date.now(),
     });
 
     await ctx.db.patch(args.billId, {

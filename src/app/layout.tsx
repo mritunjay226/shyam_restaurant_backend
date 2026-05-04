@@ -48,6 +48,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={cn("h-full antialiased", cormorant.variable, dmSans.variable)}
       style={{
         ["--font-display" as string]: "var(--font-cormorant)",

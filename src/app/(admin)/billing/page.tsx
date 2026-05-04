@@ -189,6 +189,7 @@ export default function BillingPage() {
   const dueBills = useQuery(api.billing.getDueBills) || [];
   const banquetBookings = useQuery(api.banquet.getAllBanquetBookings) || [];
   const halls = useQuery(api.banquet.getAllHalls, {}) || [];
+  const billDetails = useQuery(api.billing.getBillDetails, activeDueBillId ? { billId: activeDueBillId } : "skip");
 
   const generateRoomBill = useMutation(api.billing.generateRoomBill);
   const checkOutBooking = useMutation(api.bookings.checkOut);
@@ -488,7 +489,11 @@ export default function BillingPage() {
     outletName,
     guestGst,
     companyName,
-    rooms, // Added rooms here
+    rooms,
+    billDetails,
+    dueAmountPaid,
+    duePaymentMethod,
+    activeDueBillId,
   };
 
   // ── Print handler — uses IPC in Electron, iframe fallback in browser ─────────
@@ -847,7 +852,7 @@ export default function BillingPage() {
           )}
 
           {/* ── Bill Detail ── */}
-          {(activeRoomId || activeTableKey || activeBanquetId) && (
+          {(activeRoomId || activeTableKey || activeBanquetId || activeDueBillId) && (
             <motion.div
               key="billing"
               initial={{ opacity: 0, x: 16 }}
@@ -859,6 +864,7 @@ export default function BillingPage() {
                   setActiveRoomId(null);
                   setActiveTableKey(null);
                   setActiveBanquetId(null);
+                  setActiveDueBillId(null);
                 }}
                 className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-5 transition-colors print:hidden"
               >
@@ -868,6 +874,58 @@ export default function BillingPage() {
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
                 {/* ── Controls ── */}
                 <div className="lg:col-span-2 space-y-4 print:hidden">
+                  {activeDueBillId && activeBill && (
+                    <div className="bg-amber-50 rounded-2xl border border-amber-100 p-5 space-y-4">
+                      <div>
+                        <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Due Settlement</p>
+                        <h3 className="text-lg font-bold text-gray-900">₹{(activeBill.amountDue || 0).toLocaleString()} Pending</h3>
+                        <p className="text-xs text-gray-500">Original Total: ₹{activeBill.totalAmount.toLocaleString()}</p>
+                      </div>
+
+                      <div className="h-px bg-amber-200/50" />
+
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-xs font-bold text-gray-700 block mb-1.5 uppercase tracking-wide">
+                            Amount to Pay Now (₹)
+                          </Label>
+                          <input
+                            type="number"
+                            className="w-full rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                            value={dueAmountPaid}
+                            onChange={(e) => setDueAmountPaid(e.target.value)}
+                            placeholder={`Full amount: ${activeBill.amountDue}`}
+                            max={activeBill.amountDue}
+                          />
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-bold text-gray-700 block mb-1.5 uppercase tracking-wide">
+                            Payment Method
+                          </Label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {PAYMENT_METHODS.map((m) => (
+                              <button
+                                key={m.id}
+                                onClick={() => setDuePaymentMethod(m.id)}
+                                className={cn(
+                                  "flex flex-col items-center gap-1.5 p-2.5 rounded-xl border-2 transition-all",
+                                  duePaymentMethod === m.id
+                                    ? "border-amber-500 bg-amber-100 text-amber-700"
+                                    : "border-white bg-white text-gray-400 hover:border-amber-100"
+                                )}
+                              >
+                                <m.icon size={16} />
+                                <span className="text-[10px] font-black uppercase">
+                                  {m.label}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── Print Mode Toggle ── */}
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-2 flex gap-2">
@@ -1132,7 +1190,7 @@ export default function BillingPage() {
                     >
                       <Printer size={18} />
                       Print{" "}
-                      {printMode === "thermal" ? "Thermal Receipt" : "A4 Invoice"}
+                      {activeDueBillId ? "Settlement Receipt" : (printMode === "thermal" ? "Thermal Receipt" : "A4 Invoice")}
                     </Button>
                     <Button
                       disabled={buttonDisabled}
@@ -1144,14 +1202,22 @@ export default function BillingPage() {
                           : "border-indigo-200 text-indigo-600 hover:bg-indigo-50"
                       )}
                       onClick={
-                        activeRoomId ? handleCheckout : activeBanquetId ? handleBillBanquet : handleBillTable
+                        activeDueBillId 
+                          ? () => handleSettleDueBill(activeDueBillId, activeBill?.amountDue || 0)
+                          : activeRoomId 
+                            ? handleCheckout 
+                            : activeBanquetId 
+                              ? handleBillBanquet 
+                              : handleBillTable
                       }
                     >
                       {isSubmitting
                         ? "Processing…"
-                        : activeRoomId
-                          ? "Confirm Check-out"
-                          : "Confirm Payment"}
+                        : activeDueBillId
+                          ? "Confirm Settlement"
+                          : activeRoomId
+                            ? "Confirm Check-out"
+                            : "Confirm Payment"}
                     </Button>
                     {useSplitPayment && !isSplitValid && (
                       <p className="text-[10px] text-red-500 font-bold text-center mt-1 animate-pulse">
@@ -1249,7 +1315,11 @@ interface ThermalProps {
   outletName: (outlet?: string) => string;
   guestGst?: string;
   companyName?: string;
-  rooms?: any[]; // Added rooms here
+  rooms?: any[];
+  billDetails?: any;
+  activeDueBillId?: any;
+  dueAmountPaid?: string;
+  duePaymentMethod?: string;
 }
 
 function ThermalReceiptContent({
@@ -1277,6 +1347,10 @@ function ThermalReceiptContent({
   guestGst,
   companyName,
   rooms,
+  billDetails,
+  activeDueBillId,
+  dueAmountPaid,
+  duePaymentMethod,
 }: ThermalProps) {
   const now = new Date();
 
@@ -1308,11 +1382,26 @@ function ThermalReceiptContent({
   const phone = settings?.phone || "";
   const gstin = settings?.gstin || "09AABCU9603R1ZN";
 
-  const grandTotalPayable = activeRoomId
-    ? Math.max(0, (currentRoomCharges?.grandTotal ?? 0) - (currentRoomCharges?.booking?.advance ?? 0))
-    : currentBanquetCharges 
-      ? Math.max(0, (currentBanquetCharges.totalAmount + (includeGST ? currentBanquetCharges.totalAmount * 0.18 : 0)) - (currentBanquetCharges.advance || 0))
-      : tableGrandTotal;
+  const bill = billDetails?.bill;
+  const rc = currentRoomCharges || billDetails?.roomCharges;
+  const tc = currentTableCharges || billDetails?.tableCharges;
+  const bc = currentBanquetCharges || billDetails?.banquetCharges;
+
+  const totalBillAmount = bill?.totalAmount || (activeRoomId ? rc?.grandTotal : bc ? (bc.totalAmount + (includeGST ? bc.totalAmount * 0.18 : 0)) : tableGrandTotal) || 0;
+  
+  const grandTotalPayable = activeRoomId || bill?.billType === "room"
+    ? Math.max(0, (rc?.grandTotal ?? bill?.totalAmount ?? 0) - (rc?.booking?.advance ?? bill?.advancePaid ?? 0))
+    : bc || bill?.billType === "banquet"
+      ? Math.max(0, ((bc?.totalAmount ?? bill?.totalAmount ?? 0) + (includeGST ? (bc?.totalAmount ?? bill?.totalAmount ?? 0) * 0.18 : 0)) - (bc?.advance ?? bill?.advancePaid ?? 0))
+      : (tc?.total ?? bill?.totalAmount ?? 0);
+
+  const displayDiscount = discountAmount || bill?.discountAmount || 0;
+  const displayService = serviceCharge || bill?.serviceCharge || 0;
+  const displayHousekeeping = housekeepingCharge || bill?.housekeepingCharge || 0;
+  const displayExtra = extraCharge || bill?.extraCharge || 0;
+  const displayCgst = tableCgst || bill?.cgst || 0;
+  const displaySgst = tableSgst || bill?.sgst || 0;
+  const displayTotal = totalBillAmount;
 
   return (
     <div style={{ color: "#000", background: "#fff", fontFamily: "'Courier New', Courier, monospace" }}>
@@ -1375,7 +1464,13 @@ function ThermalReceiptContent({
           {row("Table No.", currentTableCharges?.tableNumber || "—")}
         </>
       )}
-      {row("Payment", paymentMethod.toUpperCase())}
+      {row("Payment", (bill?.paymentMethod || paymentMethod).toUpperCase())}
+
+      {bill?.status === "due" && (
+        <div style={{ backgroundColor: "#000", color: "#fff", padding: "2px 4px", fontSize: 10, fontWeight: "bold", textAlign: "center", marginTop: 4 }}>
+          PAYMENT DUE: Rs.{(bill.amountDue || 0).toLocaleString()}
+        </div>
+      )}
 
       {solidDivider()}
 
@@ -1390,24 +1485,24 @@ function ThermalReceiptContent({
           </tr>
         </thead>
         <tbody>
-          {activeRoomId && currentRoomCharges ? (
+          {rc ? (
             <>
               {tableRow(
-                `Room Tariff (${currentRoomCharges.room.category})`,
-                `${currentRoomCharges.nights}N`,
-                `${currentRoomCharges.booking.tariff}`,
-                `${currentRoomCharges.roomBaseTotal.toLocaleString("en-IN")}`
+                `Room Tariff (${rc.room.category})`,
+                `${rc.nights}N`,
+                `${rc.booking.tariff}`,
+                `${rc.roomBaseTotal.toLocaleString("en-IN")}`
               )}
-              {currentRoomCharges.booking.extraBed &&
-                tableRow("Extra Bed", `${currentRoomCharges.nights}N`, "500", `${currentRoomCharges.extraBedTotal.toLocaleString("en-IN")}`)}
-              {currentRoomCharges.linkedOrders.length > 0 && (
+              {rc.booking.extraBed &&
+                tableRow("Extra Bed", `${rc.nights}N`, "500", `${rc.extraBedTotal.toLocaleString("en-IN")}`)}
+              {rc.linkedOrders?.length > 0 && (
                 <>
                   <tr>
                     <td colSpan={4} style={{ paddingTop: 5, paddingBottom: 2, fontWeight: "bold", fontSize: 9, borderTop: "1px dashed #000", letterSpacing: "0.06em" }}>
                       FOOD &amp; BEVERAGES
                     </td>
                   </tr>
-                  {currentRoomCharges.linkedOrders.map((order: any) => (
+                  {rc.linkedOrders.map((order: any) => (
                     <Fragment key={order._id}>
                       <tr>
                         <td colSpan={3} style={{ paddingTop: 3, paddingBottom: 1, fontSize: 9, fontWeight: "bold" }}>
@@ -1417,7 +1512,7 @@ function ThermalReceiptContent({
                           {order.subtotal.toLocaleString("en-IN")}
                         </td>
                       </tr>
-                      {order.items.map((item: any, iidx: number) => (
+                      {order.items?.map((item: any, iidx: number) => (
                         <tr key={iidx}>
                           <td style={{ paddingLeft: 6, fontSize: 9 }}>{item.name}</td>
                           <td style={{ textAlign: "right", fontSize: 9 }}>{item.quantity}</td>
@@ -1430,20 +1525,20 @@ function ThermalReceiptContent({
                 </>
               )}
             </>
-          ) : currentBanquetCharges ? (
+          ) : bc ? (
             <>
               {(() => {
                 let extraChargesTotal = 0;
                 const rows = [];
                 
-                if (currentBanquetCharges.extraCharges) {
-                  currentBanquetCharges.extraCharges.forEach((charge: any) => extraChargesTotal += charge.amount);
+                if (bc.extraCharges) {
+                  bc.extraCharges.forEach((charge: any) => extraChargesTotal += charge.amount);
                 }
 
-                const baseAmount = currentBanquetCharges.totalAmount - extraChargesTotal;
+                const baseAmount = bc.totalAmount - extraChargesTotal;
                 
                 rows.push(tableRow(
-                  `${currentBanquetCharges.eventName} (${currentBanquetCharges.eventType})`,
+                  `${bc.eventName} (${bc.eventType})`,
                   "1",
                   `${baseAmount.toLocaleString("en-IN")}`,
                   `${baseAmount.toLocaleString("en-IN")}`,
@@ -1451,30 +1546,30 @@ function ThermalReceiptContent({
                 ));
 
                 // Add small sub-rows for inclusions
-                if (currentBanquetCharges.includeRooms && currentBanquetCharges.blockedRoomIds?.length) {
+                if (bc.includeRooms && bc.blockedRoomIds?.length) {
                   rows.push(
                     <tr key="rooms-header">
-                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444", fontWeight: "bold", textTransform: "uppercase" }}>— Rooms Included ({currentBanquetCharges.blockedRoomIds.length})</td>
+                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444", fontWeight: "bold", textTransform: "uppercase" }}>— Rooms Included ({bc.blockedRoomIds.length})</td>
                     </tr>
                   );
                 }
-                if (currentBanquetCharges.includeRestaurant) {
+                if (bc.includeRestaurant) {
                   rows.push(
                     <tr key="restaurant">
-                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444" }}>— Restaurant: {currentBanquetCharges.restaurantDetails || "Standard"}</td>
+                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444" }}>— Restaurant: {bc.restaurantDetails || "Standard"}</td>
                     </tr>
                   );
                 }
-                if (currentBanquetCharges.includeCafe) {
+                if (bc.includeCafe) {
                   rows.push(
                     <tr key="cafe">
-                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444" }}>— Cafe: {currentBanquetCharges.cafeDetails || "Standard"}</td>
+                      <td colSpan={4} style={{ paddingLeft: 8, fontSize: 8, color: "#444" }}>— Cafe: {bc.cafeDetails || "Standard"}</td>
                     </tr>
                   );
                 }
 
-                if (currentBanquetCharges.extraCharges) {
-                  currentBanquetCharges.extraCharges.forEach((charge: any, idx: number) => {
+                if (bc.extraCharges) {
+                  bc.extraCharges.forEach((charge: any, idx: number) => {
                     rows.push(tableRow(
                       charge.description,
                       "1",
@@ -1489,7 +1584,7 @@ function ThermalReceiptContent({
               })()}
             </>
           ) : (
-            currentTableCharges?.orders?.map((order: any) => (
+            tc?.orders?.map((order: any) => (
               <Fragment key={order._id}>
                 <tr>
                   <td colSpan={3} style={{ paddingTop: 3, paddingBottom: 1, fontSize: 9, fontWeight: "bold" }}>
@@ -1559,21 +1654,50 @@ function ThermalReceiptContent({
 
       {solidDivider()}
 
-      {/* Grand Total */}
-      <div className="thermal-total-row" style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: 14, marginBottom: 2, letterSpacing: "0.04em" }}>
-        <span>TOTAL PAYABLE</span>
-        <span>Rs.{grandTotalPayable.toLocaleString("en-IN")}</span>
+      {/* Grand Total area */}
+      <div className="thermal-total-row" style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: 13, marginBottom: 2, letterSpacing: "0.04em" }}>
+        <span>TOTAL BILL AMOUNT</span>
+        <span>Rs.{totalBillAmount.toLocaleString("en-IN")}</span>
       </div>
 
-      {/* Split payments */}
-      {splitPayments && splitPayments.filter((s) => s.amount > 0).length > 0 && (
+      {/* Payment history / splits */}
+      {(bill?.splitPayments || splitPayments) && (
         <>
+          <div style={{ fontSize: 9, fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 5, marginBottom: 3 }}>PAYMENT HISTORY</div>
           {dashedDivider()}
-          {splitPayments.filter((s) => s.amount > 0).map((s, i) => (
+          {(bill?.splitPayments || splitPayments).filter((s: any) => s.amount > 0).map((s: any, i: number) => (
             <Fragment key={i}>
-              {row(`  ${s.method.toUpperCase()}`, `Rs.${s.amount.toLocaleString("en-IN")}`)}
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, marginBottom: 1 }}>
+                <div style={{ display: "flex", gap: 5 }}>
+                  <span style={{ color: "#444" }}>{s.timestamp ? format(s.timestamp, "dd/MM HH:mm") : "-"}</span>
+                  <span style={{ fontWeight: "bold", textTransform: "uppercase" }}>{s.method}</span>
+                </div>
+                <span style={{ fontWeight: "bold" }}>Rs.{s.amount.toLocaleString("en-IN")}</span>
+              </div>
             </Fragment>
           ))}
+          
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 4, fontWeight: "bold" }}>
+             <span>PREVIOUSLY PAID</span>
+             <span>Rs.{(bill?.amountPaid || 0).toLocaleString("en-IN")}</span>
+          </div>
+
+          {activeDueBillId && dueAmountPaid && (
+            <>
+              {dashedDivider()}
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 4, color: "#000", fontWeight: "bold" }}>
+                <span>CURRENT SETTLEMENT ({duePaymentMethod?.toUpperCase()})</span>
+                <span>Rs.{parseFloat(dueAmountPaid).toLocaleString()}</span>
+              </div>
+            </>
+          )}
+
+          {bill?.status === "due" && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginTop: 6, fontWeight: "bold", borderTop: "1px solid #000", paddingTop: 4 }}>
+              <span>REMAINING BALANCE</span>
+              <span>Rs.{Math.max(0, (bill?.amountDue || 0) - (activeDueBillId && dueAmountPaid ? parseFloat(dueAmountPaid) : 0)).toLocaleString("en-IN")}</span>
+            </div>
+          )}
         </>
       )}
 
@@ -1628,6 +1752,10 @@ function NormalInvoiceContent({
   guestGst,
   companyName,
   rooms,
+  billDetails,
+  activeDueBillId,
+  dueAmountPaid,
+  duePaymentMethod,
 }: ThermalProps) {
   const now = new Date();
 
@@ -1637,42 +1765,51 @@ function NormalInvoiceContent({
   const email = settings?.email || "";
   const gstin = settings?.gstin || "09AABCU9603R1ZN";
 
-  const grandTotalPayable = activeRoomId
-    ? Math.max(0, (currentRoomCharges?.grandTotal ?? 0) - (currentRoomCharges?.booking?.advance ?? 0))
-    : currentBanquetCharges ? (currentBanquetCharges.totalAmount + (includeGST ? currentBanquetCharges.totalAmount * 0.18 : 0)) : tableGrandTotal;
+  const bill = billDetails?.bill;
+  const rc = currentRoomCharges || billDetails?.roomCharges;
+  const tc = currentTableCharges || billDetails?.tableCharges;
+  const bc = currentBanquetCharges || billDetails?.banquetCharges;
 
-  const subtotalDisplay = activeRoomId ? currentRoomCharges?.subtotal ?? 0 : currentBanquetCharges ? currentBanquetCharges.totalAmount : tableSubtotal;
-  const cgstDisplay = activeRoomId ? currentRoomCharges?.cgst ?? 0 : currentBanquetCharges ? (includeGST ? currentBanquetCharges.totalAmount * 0.09 : 0) : tableCgst;
-  const sgstDisplay = activeRoomId ? currentRoomCharges?.sgst ?? 0 : currentBanquetCharges ? (includeGST ? currentBanquetCharges.totalAmount * 0.09 : 0) : tableSgst;
+  const totalBillAmount = bill?.totalAmount || (activeRoomId ? rc?.grandTotal : bc ? (bc.totalAmount + (includeGST ? bc.totalAmount * 0.18 : 0)) : tableGrandTotal) || 0;
+
+  const grandTotalPayable = activeRoomId || bill?.billType === "room"
+    ? Math.max(0, (rc?.grandTotal ?? bill?.totalAmount ?? 0) - (rc?.booking?.advance ?? bill?.advancePaid ?? 0))
+    : bc || bill?.billType === "banquet"
+      ? Math.max(0, ((bc?.totalAmount ?? bill?.totalAmount ?? 0) + (includeGST ? (bc?.totalAmount ?? bill?.totalAmount ?? 0) * 0.18 : 0)) - (bc?.advance ?? bill?.advancePaid ?? 0))
+      : (tc?.total ?? bill?.totalAmount ?? 0);
+
+  const subtotalDisplay = rc ? (rc.subtotal || 0) : bc ? (bc.totalAmount || 0) : bill ? (bill.subtotal || 0) : (tc?.total ?? 0);
+  const cgstDisplay = rc ? (rc.cgst || 0) : bc ? (includeGST ? bc.totalAmount * 0.09 : 0) : bill ? (bill.cgst || 0) : (tc?.cgst ?? 0);
+  const sgstDisplay = rc ? (rc.sgst || 0) : bc ? (includeGST ? bc.totalAmount * 0.09 : 0) : bill ? (bill.sgst || 0) : (tc?.sgst ?? 0);
 
   // Collect all line items
   const lineItems: { description: string; qty: string; rate: string; amount: number }[] = [];
 
-  if (activeRoomId && currentRoomCharges) {
+  if (rc) {
     lineItems.push({
-      description: `Room Accommodation — ${currentRoomCharges.room.category}, Room #${currentRoomCharges.room.roomNumber}`,
-      qty: `${currentRoomCharges.nights} night${currentRoomCharges.nights > 1 ? "s" : ""}`,
-      rate: `₹${currentRoomCharges.booking.tariff.toLocaleString("en-IN")}`,
-      amount: currentRoomCharges.roomBaseTotal,
+      description: `Room Accommodation — ${rc.room.category}, Room #${rc.room.roomNumber}`,
+      qty: `${rc.nights} night${rc.nights > 1 ? "s" : ""}`,
+      rate: `₹${rc.booking.tariff.toLocaleString("en-IN")}`,
+      amount: rc.roomBaseTotal,
     });
-    if (currentRoomCharges.booking.extraBed) {
-      lineItems.push({ description: "Extra Bed", qty: `${currentRoomCharges.nights} night${currentRoomCharges.nights > 1 ? "s" : ""}`, rate: "₹500", amount: currentRoomCharges.extraBedTotal });
+    if (rc.booking.extraBed) {
+      lineItems.push({ description: "Extra Bed", qty: `${rc.nights} night${rc.nights > 1 ? "s" : ""}`, rate: "₹500", amount: rc.extraBedTotal });
     }
-    currentRoomCharges.linkedOrders.forEach((order: any) => {
+    rc.linkedOrders?.forEach((order: any) => {
       order.items?.forEach((item: any) => {
         lineItems.push({ description: `${item.name} (${outletName(order.outlet)})`, qty: String(item.quantity), rate: `₹${item.price.toLocaleString("en-IN")}`, amount: item.quantity * item.price });
       });
     });
-  } else if (currentTableCharges) {
-    currentTableCharges.orders?.forEach((order: any) => {
+  } else if (tc) {
+    tc.orders?.forEach((order: any) => {
       order.items?.forEach((item: any) => {
         lineItems.push({ description: `${item.name} (${outletName(order.outlet)})`, qty: String(item.quantity), rate: `₹${item.price.toLocaleString("en-IN")}`, amount: item.quantity * item.price });
       });
     });
-  } else if (currentBanquetCharges) {
+  } else if (bc) {
     let extraChargesTotal = 0;
-    if (currentBanquetCharges.extraCharges) {
-      currentBanquetCharges.extraCharges.forEach((charge: any) => {
+    if (bc.extraCharges) {
+      bc.extraCharges.forEach((charge: any) => {
         extraChargesTotal += charge.amount;
         lineItems.push({
           description: charge.description,
@@ -1683,25 +1820,25 @@ function NormalInvoiceContent({
       });
     }
 
-    const hasInclusions = (currentBanquetCharges.includeRooms && currentBanquetCharges.blockedRoomIds?.length) || currentBanquetCharges.includeRestaurant || currentBanquetCharges.includeCafe;
+    const hasInclusions = (bc.includeRooms && bc.blockedRoomIds?.length) || bc.includeRestaurant || bc.includeCafe;
 
     lineItems.unshift({
       description: (
         <div>
           <div style={{ fontWeight: "600", fontSize: 13, marginBottom: hasInclusions ? 8 : 0 }}>
-            Banquet Event Package: {currentBanquetCharges.eventName} ({currentBanquetCharges.eventType})
+            Banquet Event Package: {bc.eventName} ({bc.eventType})
           </div>
           
           {hasInclusions && (
             <div style={{ paddingLeft: 12, borderLeft: "2px solid #eee", fontSize: 11, color: "#444" }}>
               {/* Rooms Breakdown */}
-              {currentBanquetCharges.includeRooms && currentBanquetCharges.blockedRoomIds && currentBanquetCharges.blockedRoomIds.length > 0 && (
+              {bc.includeRooms && bc.blockedRoomIds && bc.blockedRoomIds.length > 0 && (
                 <div style={{ marginBottom: 8 }}>
                   <div style={{ fontWeight: "bold", color: "#222", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
                     Rooms
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    {currentBanquetCharges.blockedRoomIds.map((roomId: any) => {
+                    {bc.blockedRoomIds.map((roomId: any) => {
                       const room = rooms?.find((r: any) => r._id === roomId);
                       if (!room) return null;
                       return (
@@ -1716,26 +1853,26 @@ function NormalInvoiceContent({
               )}
 
               {/* Restaurant Breakdown */}
-              {currentBanquetCharges.includeRestaurant && (
+              {bc.includeRestaurant && (
                 <div style={{ marginBottom: 8 }}>
                   <div style={{ fontWeight: "bold", color: "#222", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
                     Restaurant
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", maxWidth: 300, paddingLeft: 8 }}>
-                    <span>{currentBanquetCharges.restaurantDetails || "Standard Dining"}</span>
+                    <span>{bc.restaurantDetails || "Standard Dining"}</span>
                     <span>Included</span>
                   </div>
                 </div>
               )}
 
               {/* Cafe Breakdown */}
-              {currentBanquetCharges.includeCafe && (
+              {bc.includeCafe && (
                 <div style={{ marginBottom: 4 }}>
                   <div style={{ fontWeight: "bold", color: "#222", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>
                     Cafe
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", maxWidth: 300, paddingLeft: 8 }}>
-                    <span>{currentBanquetCharges.cafeDetails || "Standard Service"}</span>
+                    <span>{bc.cafeDetails || "Standard Service"}</span>
                     <span>Included</span>
                   </div>
                 </div>
@@ -1745,8 +1882,8 @@ function NormalInvoiceContent({
         </div>
       ) as any,
       qty: "1",
-      rate: `₹${(currentBanquetCharges.totalAmount - extraChargesTotal).toLocaleString("en-IN")}`,
-      amount: currentBanquetCharges.totalAmount - extraChargesTotal
+      rate: `₹${(bc.totalAmount - extraChargesTotal).toLocaleString("en-IN")}`,
+      amount: bc.totalAmount - extraChargesTotal
     });
   }
 
@@ -1954,18 +2091,27 @@ function NormalInvoiceContent({
             Payment Information
           </div>
 
-          {splitPayments && splitPayments.filter(s => s.amount > 0).length > 0 ? (
+          {(bill?.splitPayments || splitPayments) && (bill?.splitPayments || splitPayments).filter((s: any) => s.amount > 0).length > 0 ? (
             <div style={{ marginBottom: 16 }}>
-              {splitPayments.filter(s => s.amount > 0).map((s, i) => (
+              {(bill?.splitPayments || splitPayments).filter((s: any) => s.amount > 0).map((s: any, i: number) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 12 }}>
-                  <span style={{ color: "#555", textTransform: "capitalize" }}>{s.method}</span>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <span style={{ color: "#888", fontSize: 10 }}>{s.timestamp ? format(s.timestamp, "dd/MM/yy HH:mm") : "-"}</span>
+                    <span style={{ color: "#555", textTransform: "capitalize" }}>{s.method}</span>
+                  </div>
                   <span style={{ fontWeight: "bold", fontFamily: mono }}>₹{s.amount.toLocaleString("en-IN")}</span>
                 </div>
               ))}
+              {activeDueBillId && dueAmountPaid && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 12, borderTop: "1px dotted #ccc", paddingTop: 6, marginTop: 4 }}>
+                  <span style={{ fontWeight: "bold", color: "#000" }}>Current Settlement ({duePaymentMethod?.toUpperCase()})</span>
+                  <span style={{ fontWeight: "bold", fontFamily: mono }}>₹{parseFloat(dueAmountPaid).toLocaleString()}</span>
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, fontSize: 12 }}>
-              <span style={{ color: "#555", textTransform: "capitalize" }}>{paymentMethod}</span>
+              <span style={{ color: "#555", textTransform: "capitalize" }}>{bill?.paymentMethod || paymentMethod}</span>
               <span style={{ fontWeight: "bold", fontFamily: mono }}>₹{grandTotalPayable.toLocaleString("en-IN")}</span>
             </div>
           )}
@@ -2079,12 +2225,32 @@ function NormalInvoiceContent({
           {/* Grand Total box */}
           <div style={{ borderTop: "2px solid #000", marginTop: 4, paddingTop: 14, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <span style={{ fontWeight: "bold", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", color: "#000" }}>
-              {currentBanquetCharges ? "Balance Due" : "Total Payable"}
+              Total Bill Amount
             </span>
-            <span style={{ fontWeight: "bold", fontSize: 22, fontFamily: mono, color: "#000", letterSpacing: "0.02em" }}>
-              ₹{grandTotalPayable.toLocaleString("en-IN")}
+            <span style={{ fontWeight: "bold", fontSize: 20, fontFamily: mono, color: "#000", letterSpacing: "0.02em" }}>
+              ₹{totalBillAmount.toLocaleString("en-IN")}
             </span>
           </div>
+
+          {bill?.status === "due" && (
+            <>
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#444" }}>
+                <span>Previously Paid</span>
+                <span style={{ fontFamily: mono }}>₹{(bill?.amountPaid || 0).toLocaleString("en-IN")}</span>
+              </div>
+              {activeDueBillId && dueAmountPaid && (
+                <div style={{ marginTop: 4, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#000", fontWeight: "bold" }}>
+                  <span>Current Settlement</span>
+                  <span style={{ fontFamily: mono }}>₹{parseFloat(dueAmountPaid).toLocaleString()}</span>
+                </div>
+              )}
+              <div style={{ borderTop: "1px solid #000", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: "bold", color: "#000" }}>
+                <span>Remaining Balance</span>
+                <span style={{ fontFamily: mono }}>₹{Math.max(0, (bill?.amountDue || 0) - (activeDueBillId && dueAmountPaid ? parseFloat(dueAmountPaid) : 0)).toLocaleString("en-IN")}</span>
+              </div>
+            </>
+          )}
+
           <div style={{ borderTop: "4px double #000", marginTop: 6 }} />
         </div>
       </div>

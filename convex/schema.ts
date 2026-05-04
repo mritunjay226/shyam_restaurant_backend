@@ -168,6 +168,7 @@ export default defineSchema({
     splitPayments: v.optional(v.array(v.object({
       method: v.string(),
       amount: v.number(),
+      timestamp: v.optional(v.number()),
     }))),
     status: v.string(),
     createdAt: v.string(),
