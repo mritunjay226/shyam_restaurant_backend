@@ -46,6 +46,7 @@ export default function RoomsPage() {
       advance: activeBooking?.advance,
       bookingId: activeBooking?._id,
       extraBed: activeBooking?.extraBed,
+      groupBookingId: activeBooking?.groupBookingId,
     };
   }).sort((a, b) => parseInt(a.roomNumber) - parseInt(b.roomNumber));
 

@@ -176,10 +176,29 @@ export const createOrder = mutation({
     const n = await nextCounter(ctx, "kot");
     const kotNumber = kotLabel(n);
 
+    // Automatically find and link active booking for the room
+    let bookingId = undefined;
+    if (args.roomId) {
+      const activeBooking = await ctx.db
+        .query("bookings")
+        .withIndex("by_room", (q: any) => q.eq("roomId", args.roomId))
+        .filter((q: any) => 
+          q.or(
+            q.eq(q.field("status"), "checked_in"),
+            q.eq(q.field("status"), "confirmed")
+          )
+        )
+        .first();
+      if (activeBooking) {
+        bookingId = activeBooking._id;
+      }
+    }
+
     const orderId = await ctx.db.insert("orders", {
       outlet: args.outlet,
       tableNumber: args.tableNumber,
       roomId: args.roomId,
+      bookingId,
       takenById: args.takenById,
       kotNumber,
       items: args.items,
@@ -293,8 +312,21 @@ export const transferTable = mutation({
 
     for (const o of orders) {
       if (args.toRoomId) {
+        // Also find active booking for the target room
+        const activeBooking = await ctx.db
+          .query("bookings")
+          .withIndex("by_room", (q: any) => q.eq("roomId", args.toRoomId))
+          .filter((q: any) => 
+            q.or(
+              q.eq(q.field("status"), "checked_in"),
+              q.eq(q.field("status"), "confirmed")
+            )
+          )
+          .first();
+
         await ctx.db.patch(o._id, { 
           roomId: args.toRoomId, 
+          bookingId: activeBooking?._id,
           tableNumber: "Room Service" 
         });
       } else if (args.toTableNumber) {

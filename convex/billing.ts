@@ -55,34 +55,56 @@ export const generateRoomBill = mutation({
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
 
-    // Recalculate actual nights stayed server-side
-    const checkInDate = new Date(booking.checkIn);
-    const today = new Date();
-    let nights = Math.floor(
-      (today.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)
-    );
-    if (nights === 0) nights = 1;
+    const groupBookingId = booking.groupBookingId;
+    let bookingsToBill = [booking];
 
-    const roomTotal = booking.tariff * nights;
-    const extraBedTotal = booking.extraBed ? (nights * 500) : 0;
+    if (groupBookingId) {
+      const related = await ctx.db
+        .query("bookings")
+        .withIndex("by_groupBookingId", (q) => q.eq("groupBookingId", groupBookingId))
+        .collect();
+      // Filter out those already checked out or cancelled?
+      // Actually, they should all be checked out together.
+      bookingsToBill = related.filter(b => b.status === "checked_in" || b.status === "confirmed");
+      if (bookingsToBill.length === 0) bookingsToBill = [booking];
+    }
 
-    // Get linked restaurant/cafe orders
-    const linkedOrders = await ctx.db
-      .query("orders")
-      .filter((q: any) =>
-        q.and(
-          q.eq(q.field("roomId"), booking.roomId),
-          q.neq(q.field("status"), "paid")
-        )
-      )
-      .collect();
+    let totalRoomBase = 0;
+    let totalExtraBed = 0;
+    let totalOrderAmount = 0;
+    let totalFoodGst = 0;
+    let totalOrderSubtotal = 0;
+    let totalAdvance = 0;
 
-    const orderTotal = linkedOrders.reduce(
-      (sum, order) => sum + order.totalAmount,
-      0
-    );
+    const allLinkedOrders: any[] = [];
 
-    let subtotal = roomTotal + extraBedTotal + orderTotal;
+    for (const b of bookingsToBill) {
+      // Recalculate actual nights stayed server-side
+      const checkInDate = new Date(b.checkIn);
+      const today = new Date();
+      let nights = Math.floor(
+        (today.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      if (nights === 0) nights = 1;
+
+      totalRoomBase += b.tariff * nights;
+      totalExtraBed += b.extraBed ? (nights * 500) : 0;
+      totalAdvance += (b.advance || 0);
+
+      // Get linked restaurant/cafe orders specifically for THIS booking
+      const roomOrders = await ctx.db
+        .query("orders")
+        .withIndex("by_booking", (q) => q.eq("bookingId", b._id))
+        .filter((q: any) => q.neq(q.field("status"), "paid"))
+        .collect();
+      
+      allLinkedOrders.push(...roomOrders);
+      totalOrderAmount += roomOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+      totalFoodGst += roomOrders.reduce((sum, o) => sum + (o.gstAmount || 0), 0);
+      totalOrderSubtotal += roomOrders.reduce((sum, o) => sum + (o.subtotal || 0), 0);
+    }
+
+    let subtotal = totalRoomBase + totalExtraBed + totalOrderAmount;
 
     // Apply additional charges
     const sc = args.serviceCharge || 0;
@@ -97,12 +119,9 @@ export const generateRoomBill = mutation({
     // Fetch settings for GST rates
     const settings = await ctx.db.query("hotelSettings").first();
     const roomGstRate = (settings?.roomGst || 12) / 100;
-    const foodGstRate = (settings?.foodGst || 5) / 100;
 
     // 1. Calculate Room-only GST
-    // We apply room GST rate to (roomTotal + serviceCharge + housekeepingCharge + extraCharge - discount)
-    // Note: Discount and extra charges are usually applied to the room portion in hospitality.
-    let roomSubtotal = roomTotal + extraBedTotal + sc + hc + ec - discount;
+    let roomSubtotal = totalRoomBase + totalExtraBed + sc + hc + ec - discount;
     roomSubtotal = Math.max(0, roomSubtotal);
     
     let roomCgst = 0;
@@ -112,21 +131,15 @@ export const generateRoomBill = mutation({
       roomSgst = roomSubtotal * (roomGstRate / 2);
     }
 
-    // 2. Aggregate Food GST from linked orders
-    // The orders already have gstAmount calculated at their specific rates (5% or 18%)
-    const foodGstTotal = linkedOrders.reduce((sum, o) => sum + (o.gstAmount || 0), 0);
-    const orderSubtotal = linkedOrders.reduce((sum, o) => sum + (o.subtotal || 0), 0);
-    
-    // Food GST is independent of Room GST
+    // 2. Aggregate Food GST
     const includeFood = args.includeFoodGst === true;
-    const cgst = roomCgst + (includeFood ? (foodGstTotal / 2) : 0);
-    const sgst = roomSgst + (includeFood ? (foodGstTotal / 2) : 0);
+    const cgst = roomCgst + (includeFood ? (totalFoodGst / 2) : 0);
+    const sgst = roomSgst + (includeFood ? (totalFoodGst / 2) : 0);
 
-    const totalAmount = roomSubtotal + orderSubtotal + cgst + sgst;
+    const totalAmount = roomSubtotal + totalOrderSubtotal + cgst + sgst;
 
     // Advance deduction
-    const advance = booking.advance || 0;
-    const amountDue = Math.max(0, totalAmount - advance);
+    const amountDue = Math.max(0, totalAmount - totalAdvance);
 
     const billId = await ctx.db.insert("bills", {
       billType: "room",
@@ -142,7 +155,7 @@ export const generateRoomBill = mutation({
       cgst: Math.round(cgst * 100) / 100,
       sgst: Math.round(sgst * 100) / 100,
       totalAmount: Math.round(totalAmount * 100) / 100,
-      advancePaid: advance > 0 ? advance : undefined,
+      advancePaid: totalAdvance > 0 ? totalAdvance : undefined,
       amountDue: Math.round(amountDue * 100) / 100,
       paymentMethod: args.paymentMethod,
       splitPayments: args.splitPayments?.map(s => ({
@@ -153,10 +166,15 @@ export const generateRoomBill = mutation({
       createdAt: new Date().toISOString().split("T")[0],
     });
 
-    // Mark linked orders as paid
-    for (const order of linkedOrders) {
+    // Mark ALL linked orders as paid
+    for (const order of allLinkedOrders) {
       await ctx.db.patch(order._id, { status: "paid" });
     }
+
+    // Mark ALL bookings in group as checked out?
+    // Usually checkout mutation is called separately, but for group billing, 
+    // it makes sense to mark them as ready for checkout or done.
+    // However, the standard flow is: Generate Bill -> Settle -> Checkout Room.
 
     // AUDIT LOG
     await ctx.db.insert("auditLog", {
@@ -519,41 +537,63 @@ export const getBillDetails = query({
     if (bill.billType === "room") {
       const booking = await ctx.db.get(bill.referenceId as any) as any;
       if (booking) {
-        const room = await ctx.db.get(booking.roomId);
-        
-        // Calculate nights at the time of billing
-        let nights = 1;
-        try {
-          const checkInDate = new Date(booking.checkIn);
-          // If checkOut is populated use it, else use bill creation time
-          const checkOutTime = booking.checkOut ? new Date(booking.checkOut).getTime() : bill._creationTime;
-          nights = Math.floor((checkOutTime - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
-          if (nights <= 0 || isNaN(nights)) nights = 1;
-        } catch (e) {
-          nights = 1;
+        const groupBookingId = booking.groupBookingId;
+        let bookings = [booking];
+
+        if (groupBookingId) {
+          const related = await ctx.db
+            .query("bookings")
+            .withIndex("by_groupBookingId", (q) => q.eq("groupBookingId", groupBookingId))
+            .collect();
+          // Find bookings active during the bill creation period
+          bookings = related.filter(b => b.status !== "cancelled");
         }
 
-        const allOrders = await ctx.db
-          .query("orders")
-          .filter(q => q.and(
-            q.eq(q.field("roomId"), booking.roomId),
-            q.eq(q.field("status"), "paid")
-          ))
-          .collect();
+        const roomsData = [];
+        const allLinkedOrders: any[] = [];
 
-        // Include orders paid around the same time as the bill (within 2 minutes)
-        const linkedOrders = allOrders.filter(o => 
-          o._creationTime <= bill._creationTime + 120000 &&
-          o._creationTime >= new Date(booking.checkIn).getTime() - 86400000 // Since check-in (allow 1 day before in case of midnight issues)
-        );
+        for (const b of bookings) {
+          const room = await ctx.db.get(b.roomId);
+          
+          let nights = 1;
+          try {
+            const checkInDate = new Date(b.checkIn);
+            const checkOutTime = b.checkOut ? new Date(b.checkOut).getTime() : bill._creationTime;
+            nights = Math.floor((checkOutTime - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (nights <= 0 || isNaN(nights)) nights = 1;
+          } catch (e) {
+            nights = 1;
+          }
+
+          const roomOrders = await ctx.db
+            .query("orders")
+            .filter(q => q.and(
+              q.eq(q.field("roomId"), b.roomId),
+              q.eq(q.field("status"), "paid")
+            ))
+            .collect();
+
+          const linkedRoomOrders = roomOrders.filter(o => 
+            o._creationTime <= bill._creationTime + 120000 &&
+            o._creationTime >= new Date(b.checkIn).getTime() - 86400000
+          );
+
+          roomsData.push({
+            room,
+            booking: b,
+            nights,
+            roomBaseTotal: b.tariff * nights,
+            extraBedTotal: b.extraBed ? 500 * nights : 0,
+            linkedOrders: linkedRoomOrders,
+          });
+
+          allLinkedOrders.push(...linkedRoomOrders);
+        }
 
         roomCharges = {
-          room,
-          booking,
-          nights,
-          roomBaseTotal: booking.tariff * nights,
-          extraBedTotal: booking.extraBed ? 500 * nights : 0,
-          linkedOrders,
+          rooms: roomsData,
+          totalNights: roomsData.reduce((sum, r) => sum + r.nights, 0),
+          allOrders: allLinkedOrders,
         };
       }
     } else if (bill.billType === "banquet") {
@@ -662,6 +702,44 @@ export const settleDueBill = mutation({
       staffId: (await ctx.db.query("staff").first())?._id!,
       action: "settle_due_bill",
       details: `Settled ₹${args.amount} for Bill ${args.billId} via ${args.paymentMethod}. Remaining Due: ₹${newAmountDue}`,
+      timestamp: Date.now(),
+    });
+
+    return args.billId;
+  },
+});
+
+// UPDATE SPLIT PAYMENTS HISTORY
+export const updateSplitPayments = mutation({
+  args: {
+    billId: v.id("bills"),
+    splitPayments: v.array(v.object({
+      method: v.string(),
+      amount: v.number(),
+      timestamp: v.optional(v.number()),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const bill = await ctx.db.get(args.billId);
+    if (!bill) throw new Error("Bill not found");
+
+    const newAmountPaid = args.splitPayments.reduce((sum, p) => sum + p.amount, 0);
+    const newAmountDue = Math.max(0, bill.totalAmount - newAmountPaid);
+    const newStatus = newAmountDue <= 0 ? "paid" : "due";
+
+    await ctx.db.patch(args.billId, {
+      amountPaid: Math.round(newAmountPaid * 100) / 100,
+      amountDue: Math.round(newAmountDue * 100) / 100,
+      status: newStatus,
+      paymentMethod: "split",
+      splitPayments: args.splitPayments,
+    });
+
+    // AUDIT LOG
+    await ctx.db.insert("auditLog", {
+      staffId: (await ctx.db.query("staff").first())?._id!,
+      action: "update_split_payments",
+      details: `Updated payment history for Bill ${args.billId}. Total Paid: ₹${newAmountPaid}. Remaining: ₹${newAmountDue}`,
       timestamp: Date.now(),
     });
 

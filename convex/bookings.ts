@@ -117,6 +117,138 @@ export const getBookingById = query({
 // MUTATIONS
 // ─────────────────────────────────────────────────────────────────
 
+async function createSingleBookingInternal(ctx: any, args: any, groupBookingId?: string) {
+  // ── 1. DATE OVERLAP CHECK ──────────────────────────────────────
+  const today = new Date().toISOString().slice(0, 10);
+  const activeBookings = await ctx.db
+    .query("bookings")
+    .withIndex("by_room", (q: any) => q.eq("roomId", args.roomId))
+    .filter((q: any) =>
+      q.and(
+        q.neq(q.field("status"), "cancelled"),
+        q.neq(q.field("status"), "checked_out")
+      )
+    )
+    .collect();
+
+  for (const b of activeBookings) {
+    if (b.status === "checked_in") {
+    } else if (b.status === "confirmed" && b.checkIn > today) {
+    } else {
+      continue;
+    }
+
+    if (overlaps(args.checkIn, args.checkOut, b.checkIn, b.checkOut)) {
+      const room = await ctx.db.get(args.roomId);
+      throw new Error(
+        `Room ${room?.roomNumber} is already booked from ${b.checkIn} to ${b.checkOut} (${b.guestName}).`
+      );
+    }
+  }
+
+  // ── 2. GUEST PROFILE (upsert) ──────────────────────────────────
+  let guestId: any;
+  const existingGuest = await ctx.db
+    .query("guests")
+    .withIndex("by_phone", (q: any) => q.eq("phone", args.guestPhone))
+    .first();
+
+  if (existingGuest) {
+    await ctx.db.patch(existingGuest._id, {
+      totalVisits: existingGuest.totalVisits + 1,
+      totalSpend: existingGuest.totalSpend + args.totalAmount,
+      ...(args.idType ? { idType: args.idType } : {}),
+      ...(args.idNumber ? { idNumber: args.idNumber } : {}),
+    });
+    guestId = existingGuest._id;
+  } else {
+    guestId = await ctx.db.insert("guests", {
+      name: args.guestName,
+      phone: args.guestPhone,
+      idType: args.idType,
+      idNumber: args.idNumber,
+      totalVisits: 1,
+      totalSpend: args.totalAmount,
+    });
+  }
+
+  // ── 3. FOLIO NUMBER ───────────────────────────────────────────
+  const folioNumber = await nextFolio(ctx);
+
+  // ── 4. CLEAR PREVIOUS ACTIVE BOOKINGS FOR THIS ROOM ───────────
+  // If the room was already booked (e.g. Banquet Block), we check out those bookings
+  // to ensure only the newest booking is active and visible in billing.
+  const previousBlocks = await ctx.db
+    .query("bookings")
+    .withIndex("by_room", (q: any) => q.eq("roomId", args.roomId))
+    .filter((q: any) => 
+      q.and(
+        q.or(
+          q.eq(q.field("status"), "confirmed"),
+          q.eq(q.field("status"), "checked_in")
+        ),
+        // Only auto-checkout if it's a Banquet Block or a stale block
+        q.or(
+          q.regex(q.field("guestName"), /.*\(Banquet Block\).*/),
+          q.eq(q.field("tariff"), 0)
+        )
+      )
+    )
+    .collect();
+
+  for (const b of previousBlocks) {
+    await ctx.db.patch(b._id, { status: "checked_out" });
+  }
+
+  // ── 5. UPDATE ROOM STATUS ─────────────────────────────────────
+  await ctx.db.patch(args.roomId, { status: "occupied" });
+
+  // ── 5. CREATE BOOKING ─────────────────────────────────────────
+  const bookingId = await ctx.db.insert("bookings", {
+    roomId: args.roomId,
+    guestId,
+    folioNumber,
+    guestName: args.guestName,
+    guestPhone: args.guestPhone,
+    idType: args.idType,
+    idNumber: args.idNumber,
+    checkIn: args.checkIn,
+    checkOut: args.checkOut,
+    tariff: args.tariff,
+    advance: args.advance,
+    balance: args.totalAmount - args.advance,
+    totalAmount: args.totalAmount,
+    status: "confirmed",
+    gstBill: args.gstBill,
+    extraBed: args.extraBed,
+    plan: args.plan || "EP",
+    notes: args.notes,
+    source: args.source ?? "walk_in",
+    trackingCode: generateTrackingCode(),
+    groupBookingId,
+  });
+
+  // ── 6. RECORD ADVANCE PAYMENT IN BILLS ─────
+  if (args.advance > 0) {
+    await ctx.db.insert("bills", {
+      billType: "room",
+      referenceId: bookingId as string,
+      guestName: args.guestName,
+      isGstBill: false,
+      subtotal: args.advance,
+      cgst: 0,
+      sgst: 0,
+      totalAmount: args.advance,
+      advancePaid: args.advance,
+      paymentMethod: args.source === "website" ? "online" : "cash",
+      status: "paid",
+      createdAt: new Date().toISOString().split("T")[0],
+    });
+  }
+
+  return bookingId;
+}
+
 export const createBooking = mutation({
   args: {
     roomId: v.id("rooms"),
@@ -131,122 +263,64 @@ export const createBooking = mutation({
     totalAmount: v.number(),
     gstBill: v.optional(v.boolean()),
     extraBed: v.optional(v.boolean()),
+    plan: v.optional(v.string()),
     notes: v.optional(v.string()),
     source: v.optional(v.string()),   // "walk_in", "phone", "ota"
   },
   handler: async (ctx, args) => {
-    // ── 1. DATE OVERLAP CHECK ──────────────────────────────────────
-    // Find all active bookings for this room (not cancelled/checked_out)
-    const today = new Date().toISOString().slice(0, 10);
-    const activeBookings = await ctx.db
-      .query("bookings")
-      .withIndex("by_room", (q) => q.eq("roomId", args.roomId))
-      .filter((q) =>
-        q.and(
-          q.neq(q.field("status"), "cancelled"),
-          q.neq(q.field("status"), "checked_out")
-        )
-      )
-      .collect();
+    return await createSingleBookingInternal(ctx, args);
+  },
+});
 
-    for (const b of activeBookings) {
-      // Mirror frontend rule:
-      // - checked_in → always blocks (active guest in room)
-      // - confirmed with checkIn in the future → blocks (upcoming reservation)
-      // - confirmed with checkIn today or earlier → stale/no-show, skip
-      // - pending → skip (tentative hold, not confirmed)
-      if (b.status === "checked_in") {
-        // active guest — enforce overlap check
-      } else if (b.status === "confirmed" && b.checkIn > today) {
-        // future confirmed reservation — enforce overlap check
-      } else {
-        // stale / no-show / banquet block / pending — don't block
-        continue;
-      }
+export const createMultiRoomBooking = mutation({
+  args: {
+    rooms: v.array(v.object({
+      roomId: v.id("rooms"),
+      tariff: v.number(),
+      extraBed: v.optional(v.boolean()),
+      plan: v.optional(v.string()),
+    })),
+    guestName: v.string(),
+    guestPhone: v.string(),
+    idType: v.optional(v.string()),
+    idNumber: v.optional(v.string()),
+    checkIn: v.string(),
+    checkOut: v.string(),
+    advance: v.number(),
+    notes: v.optional(v.string()),
+    source: v.optional(v.string()),
+    gstBill: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const groupBookingId = `GRP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const bookingIds = [];
 
-      if (overlaps(args.checkIn, args.checkOut, b.checkIn, b.checkOut)) {
-        throw new Error(
-          `Room is already booked from ${b.checkIn} to ${b.checkOut} (${b.guestName}). Please choose different dates.`
-        );
-      }
+    // Simple day calculation
+    const d1 = new Date(args.checkIn);
+    const d2 = new Date(args.checkOut);
+    const nights = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / 86400000));
+
+    for (let i = 0; i < args.rooms.length; i++) {
+      const roomReq = args.rooms[i];
+      const roomTotal = (roomReq.tariff + (roomReq.extraBed ? 500 : 0)) * nights;
+      
+      // Advance is only assigned to the first booking for accounting clarity
+      const roomAdvance = i === 0 ? args.advance : 0;
+
+      const bid = await createSingleBookingInternal(ctx, {
+        ...args,
+        roomId: roomReq.roomId,
+        tariff: roomReq.tariff,
+        extraBed: roomReq.extraBed || false,
+        plan: roomReq.plan || "EP",
+        advance: roomAdvance,
+        totalAmount: roomTotal,
+      }, groupBookingId);
+
+      bookingIds.push(bid);
     }
 
-    // ── 2. GUEST PROFILE (upsert) ──────────────────────────────────
-    let guestId: any;
-    const existingGuest = await ctx.db
-      .query("guests")
-      .withIndex("by_phone", (q) => q.eq("phone", args.guestPhone))
-      .first();
-
-    if (existingGuest) {
-      // Update visit count and spend
-      await ctx.db.patch(existingGuest._id, {
-        totalVisits: existingGuest.totalVisits + 1,
-        totalSpend: existingGuest.totalSpend + args.totalAmount,
-        // Update ID details if provided
-        ...(args.idType ? { idType: args.idType } : {}),
-        ...(args.idNumber ? { idNumber: args.idNumber } : {}),
-      });
-      guestId = existingGuest._id;
-    } else {
-      guestId = await ctx.db.insert("guests", {
-        name: args.guestName,
-        phone: args.guestPhone,
-        idType: args.idType,
-        idNumber: args.idNumber,
-        totalVisits: 1,
-        totalSpend: args.totalAmount,
-      });
-    }
-
-    // ── 3. FOLIO NUMBER ───────────────────────────────────────────
-    const folioNumber = await nextFolio(ctx);
-
-    // ── 4. UPDATE ROOM STATUS ─────────────────────────────────────
-    await ctx.db.patch(args.roomId, { status: "occupied" });
-
-    // ── 5. CREATE BOOKING ─────────────────────────────────────────
-    const bookingId = await ctx.db.insert("bookings", {
-      roomId: args.roomId,
-      guestId,
-      folioNumber,
-      guestName: args.guestName,
-      guestPhone: args.guestPhone,
-      idType: args.idType,
-      idNumber: args.idNumber,
-      checkIn: args.checkIn,
-      checkOut: args.checkOut,
-      tariff: args.tariff,
-      advance: args.advance,
-      balance: args.totalAmount - args.advance,
-      totalAmount: args.totalAmount,
-      status: "confirmed",
-      gstBill: args.gstBill,
-      extraBed: args.extraBed,
-      notes: args.notes,
-      source: args.source ?? "walk_in",
-      trackingCode: generateTrackingCode(),
-    });
-
-    // ── 6. RECORD ADVANCE PAYMENT IN BILLS (shows in revenue) ─────
-    if (args.advance > 0) {
-      await ctx.db.insert("bills", {
-        billType: "room",
-        referenceId: bookingId as string,
-        guestName: args.guestName,
-        isGstBill: false,
-        subtotal: args.advance,
-        cgst: 0,
-        sgst: 0,
-        totalAmount: args.advance,
-        advancePaid: args.advance,
-        paymentMethod: args.source === "website" ? "online" : "cash",
-        status: "paid",
-        createdAt: new Date().toISOString().split("T")[0],
-      });
-    }
-
-    return bookingId;
+    return groupBookingId;
   },
 });
 
@@ -255,8 +329,24 @@ export const checkIn = mutation({
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
-    await ctx.db.patch(args.bookingId, { status: "checked_in" });
-    await ctx.db.patch(booking.roomId, { status: "occupied" });
+    
+    const groupBookingId = booking.groupBookingId;
+    let bookingsToUpdate = [booking];
+    
+    if (groupBookingId) {
+      bookingsToUpdate = await ctx.db
+        .query("bookings")
+        .withIndex("by_groupBookingId", (q) => q.eq("groupBookingId", groupBookingId))
+        .collect();
+    }
+    
+    for (const bk of bookingsToUpdate) {
+      if (bk.status !== "checked_in") {
+        await ctx.db.patch(bk._id, { status: "checked_in" });
+        await ctx.db.patch(bk.roomId, { status: "occupied" });
+      }
+    }
+    
     return { success: true };
   },
 });
@@ -266,8 +356,24 @@ export const checkOut = mutation({
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
-    await ctx.db.patch(args.bookingId, { status: "checked_out" });
-    await ctx.db.patch(booking.roomId, { status: "dirty" });
+    
+    const groupBookingId = booking.groupBookingId;
+    let bookingsToUpdate = [booking];
+    
+    if (groupBookingId) {
+      bookingsToUpdate = await ctx.db
+        .query("bookings")
+        .withIndex("by_groupBookingId", (q) => q.eq("groupBookingId", groupBookingId))
+        .collect();
+    }
+    
+    for (const bk of bookingsToUpdate) {
+      if (bk.status !== "checked_out") {
+        await ctx.db.patch(bk._id, { status: "checked_out" });
+        await ctx.db.patch(bk.roomId, { status: "dirty" });
+      }
+    }
+    
     return { success: true };
   },
 });

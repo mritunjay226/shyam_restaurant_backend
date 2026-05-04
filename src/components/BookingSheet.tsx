@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { Doc, Id } from "../../convex/_generated/dataModel";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -28,7 +30,6 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
 import { DatePicker } from "./ui/date-picker";
 import { parseISO, startOfDay, eachDayOfInterval } from "date-fns";
 
@@ -88,11 +89,9 @@ function DetailRow({
 
 export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const [advance, setAdvance] = useState("0");
-  const [tariff, setTariff] = useState("0");
   const [guestName, setGuestName] = useState("");
   const [phone, setPhone] = useState("");
   const [countryCode, setCountryCode] = useState("+91");
-  const [extraBed, setExtraBed] = useState(false);
   const [idType, setIdType] = useState("Aadhar");
   const [idNumber, setIdNumber] = useState("");
   const [checkIn, setCheckIn] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -100,7 +99,22 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFutureBookingMode, setIsFutureBookingMode] = useState(false);
+  const [selectedRooms, setSelectedRooms] = useState<{
+    roomId: any;
+    roomNumber: string;
+    tariff: string;
+    extraBed: boolean;
+    plan: string;
+  }[]>([]);
   const router = useRouter();
+
+  const createMultiRoomBooking = useMutation(api.bookings.createMultiRoomBooking);
+  const allRooms = useQuery(api.rooms.getAllRooms, {}) || [];
+  const availableRooms = useMemo(() => 
+    allRooms.filter((r: any) => 
+      r.status === "available" && 
+      !selectedRooms.find(sr => sr.roomId === r._id)
+    ), [allRooms, selectedRooms]);
 
   const createBooking = useMutation(api.bookings.createBooking);
   const checkoutMutation = useMutation(api.bookings.checkOut);
@@ -161,29 +175,23 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   }, [roomBookings]);
 
 
-  const existingGuest = useQuery(
-    api.bookings.getGuestByPhone,
-    phone.length >= 10 ? { phone } : "skip"
-  );
 
-  useEffect(() => {
-    if (existingGuest && existingGuest._id) {
-      if (!guestName) setGuestName(existingGuest.name);
-      if (existingGuest.idType) setIdType(existingGuest.idType);
-      if (existingGuest.idNumber) setIdNumber(existingGuest.idNumber);
-    }
-  }, [existingGuest]);
 
   useEffect(() => {
     if (room) {
-      setTariff(room.tariff?.toString() || "0");
+      setSelectedRooms([{
+        roomId: room._id,
+        roomNumber: room.roomNumber,
+        tariff: room.tariff?.toString() || "0",
+        extraBed: false,
+        plan: "EP"
+      }]);
       setAdvance("0");
       setGuestName("");
       setPhone("");
       setIdNumber("");
       setCheckOut("");
       setNotes("");
-      setExtraBed(false);
       setIsFutureBookingMode(false);
     }
   }, [room]);
@@ -191,26 +199,24 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const onPointerDown = (e: React.PointerEvent) => e.stopPropagation();
 
   const handleConfirm = async () => {
-    if (!guestName || !phone || !checkOut || !room)
+    if (!guestName || !phone || !checkOut || selectedRooms.length === 0)
       return alert("Please fill all required fields");
     setIsSubmitting(true);
     try {
-      const days = differenceInDays(new Date(checkOut), new Date(checkIn));
-      const totalNights = Math.max(1, days);
-      const computedTotal =
-        (parseInt(tariff) + (extraBed ? 500 : 0)) * totalNights;
-      await createBooking({
-        roomId: room._id as any,
+      await createMultiRoomBooking({
+        rooms: selectedRooms.map(r => ({
+          roomId: r.roomId,
+          tariff: parseInt(r.tariff),
+          extraBed: r.extraBed,
+          plan: r.plan,
+        })),
         guestName,
         guestPhone: `${countryCode}${phone}`,
         idType,
         idNumber,
         checkIn,
         checkOut,
-        tariff: parseInt(tariff),
         advance: parseInt(advance || "0"),
-        totalAmount: computedTotal,
-        extraBed,
         notes,
       });
       onClose();
@@ -244,10 +250,15 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const computedDays = checkOut
     ? Math.max(1, differenceInDays(new Date(checkOut), new Date(checkIn)))
     : 1;
-  const computedTariff = parseInt(tariff || "0") + (extraBed ? 500 : 0);
+
+  const totalBookingAmount = selectedRooms.reduce((sum, sr) => 
+    sum + (parseInt(sr.tariff || "0") + (sr.extraBed ? 500 : 0)) * computedDays, 
+    0
+  );
+
   const computedBalance = Math.max(
     0,
-    computedTariff * computedDays - parseInt(advance || "0")
+    totalBookingAmount - parseInt(advance || "0")
   );
 
   // For occupied rooms: derive balance from activeBooking if available
@@ -457,56 +468,127 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
 
                   <hr className="border-gray-100" />
 
+                  <hr className="border-gray-100" />
+
                   <div className="space-y-4">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                      <ShieldCheck size={14} /> Financials
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-gray-700">
-                          Tariff/Night (
-                          <span className="text-gray-400">₹</span>)
-                        </Label>
-                        <Input
-                          type="number"
-                          value={tariff}
-                          onChange={(e) => setTariff(e.target.value)}
-                          onPointerDown={onPointerDown}
-                          className="h-11 rounded-xl bg-gray-50/50 border-gray-200 font-bold tabular-nums text-gray-900"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-gray-700">
-                          Advance Paid (<span className="text-gray-400">₹</span>
-                          )
-                        </Label>
-                        <Input
-                          type="number"
-                          value={advance}
-                          onChange={(e) => setAdvance(e.target.value)}
-                          onPointerDown={onPointerDown}
-                          className="h-11 rounded-xl bg-green-50/50 border-green-200 text-green-700 font-bold tabular-nums"
-                        />
-                      </div>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                        <BedDouble size={14} /> Rooms & Tariffs
+                      </h3>
+                      {availableRooms.length > 0 && (
+                        <select
+                          className="text-[10px] bg-green-50 text-green-700 border border-green-200 rounded-md px-2 py-1 font-bold outline-none cursor-pointer"
+                          onChange={(e) => {
+                            const r = availableRooms.find((room: any) => room._id === e.target.value);
+                            if (r) {
+                              setSelectedRooms([...selectedRooms, {
+                                roomId: r._id,
+                                roomNumber: r.roomNumber,
+                                tariff: r.tariff.toString(),
+                                extraBed: false,
+                                plan: "EP"
+                              }]);
+                            }
+                            e.target.value = "";
+                          }}
+                          value=""
+                        >
+                          <option value="">+ Add Room</option>
+                          {availableRooms.map((r: any) => (
+                            <option key={r._id} value={r._id}>Room {r.roomNumber}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      {selectedRooms.map((sr, idx) => (
+                        <div key={sr.roomId} className="bg-gray-50/50 rounded-xl border border-gray-100 p-4 relative group">
+                          {idx > 0 && (
+                            <button
+                              onClick={() => setSelectedRooms(selectedRooms.filter(r => r.roomId !== sr.roomId))}
+                              className="absolute -top-2 -right-2 w-6 h-6 bg-red-100 text-red-600 rounded-full flex items-center justify-center border border-red-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-sm font-bold text-gray-900">Room {sr.roomNumber}</span>
+                            <div className="flex items-center gap-2">
+                              <Label className="text-[10px] font-bold text-gray-400">Extra Bed</Label>
+                              <Switch
+                                checked={sr.extraBed}
+                                onCheckedChange={(val) => {
+                                  const newList = [...selectedRooms];
+                                  newList[idx].extraBed = val;
+                                  setSelectedRooms(newList);
+                                }}
+                                className="scale-75"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div className="space-y-1">
+                              <Label className="text-[10px] font-bold text-gray-400">Plan</Label>
+                              <select
+                                value={sr.plan}
+                                onChange={(e) => {
+                                  const newList = [...selectedRooms];
+                                  newList[idx].plan = e.target.value;
+                                  setSelectedRooms(newList);
+                                }}
+                                className="w-full h-9 rounded-lg bg-white border border-gray-200 text-sm font-bold px-2 outline-none focus:ring-2 focus:ring-green-500/20"
+                              >
+                                <option value="EP">EP (Room Only)</option>
+                                <option value="CP">CP (Breakfast)</option>
+                                <option value="MAP">MAP (Bkfst + 1 Meal)</option>
+                                <option value="AP">AP (All Meals)</option>
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px] font-bold text-gray-400">Tariff/Night</Label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₹</span>
+                                <Input
+                                  type="number"
+                                  value={sr.tariff}
+                                  onChange={(e) => {
+                                    const newList = [...selectedRooms];
+                                    newList[idx].tariff = e.target.value;
+                                    setSelectedRooms(newList);
+                                  }}
+                                  className="h-9 pl-6 rounded-lg bg-white border-gray-200 text-sm font-bold"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-col justify-end">
+                              <div className="text-[10px] font-bold text-gray-400 mb-1 text-right">Total</div>
+                              <div className="text-sm font-black text-gray-900 text-right">
+                                ₹{((parseInt(sr.tariff || "0") + (sr.extraBed ? 500 : 0)) * computedDays).toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
+                  <hr className="border-gray-100" />
+
                   <div className="space-y-4">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                      <Plus size={14} /> Add-ons
+                      <CreditCard size={14} /> Overall Advance
                     </h3>
-                    <div className="flex items-center justify-between bg-gray-50/80 p-3 rounded-xl border border-gray-100">
-                      <div>
-                        <Label className="text-xs font-bold text-gray-700">
-                          Extra Bed
-                        </Label>
-                        <p className="text-[10px] text-gray-400">
-                          Additional room bed for ₹500/night
-                        </p>
-                      </div>
-                      <Switch
-                        checked={extraBed}
-                        onCheckedChange={setExtraBed}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-gray-700">
+                        Total Advance Paid (<span className="text-gray-400">₹</span>)
+                      </Label>
+                      <Input
+                        type="number"
+                        value={advance}
+                        onChange={(e) => setAdvance(e.target.value)}
+                        onPointerDown={onPointerDown}
+                        className="h-11 rounded-xl bg-green-50/50 border-green-200 text-green-700 font-bold tabular-nums"
                       />
                     </div>
                   </div>
@@ -631,9 +713,19 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                                 : `${room.nights} Nights`
                             }
                           />
+                          <DetailRow
+                            icon={<BedDouble size={14} />}
+                            label="Meal Plan"
+                            value={
+                              activeBooking?.plan === "AP" ? "AP (All Meals)" :
+                              activeBooking?.plan === "MAP" ? "MAP (Bkfst + 1 Meal)" :
+                              activeBooking?.plan === "CP" ? "CP (Breakfast)" :
+                              "EP (Room Only)"
+                            }
+                          />
                           {activeBooking?.extraBed && (
                             <DetailRow
-                              icon={<BedDouble size={14} />}
+                              icon={<Plus size={14} />}
                               label="Add-ons"
                               value="Extra Bed (+₹500/night)"
                             />
@@ -824,14 +916,25 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
             {/* Footer / Actions */}
             <div className="px-6 py-5 border-t border-gray-100 bg-gray-50/50 shrink-0">
               {room.status === "available" && (
-                <div className="flex items-center justify-between gap-4">
-                  <div className="hidden sm:block">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Total Balance
-                    </p>
-                    <p className="text-xl font-bold text-gray-900 tabular-nums">
-                      ₹{computedBalance.toLocaleString()}
-                    </p>
+                <div className="flex items-center justify-between gap-8 flex-1">
+                  <div className="flex items-center gap-6">
+                    <div className="hidden sm:block">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">
+                        Grand Total
+                      </p>
+                      <p className="text-lg font-bold text-gray-900 tabular-nums">
+                        ₹{totalBookingAmount.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="hidden sm:block w-px h-8 bg-gray-200" />
+                    <div className="hidden sm:block">
+                      <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-0.5">
+                        Total Balance
+                      </p>
+                      <p className="text-xl font-black text-emerald-700 tabular-nums">
+                        ₹{computedBalance.toLocaleString()}
+                      </p>
+                    </div>
                   </div>
                   <Button
                     disabled={isSubmitting}

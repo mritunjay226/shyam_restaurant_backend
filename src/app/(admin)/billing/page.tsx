@@ -14,6 +14,10 @@ import {
   User,
   Thermometer,
   FileText,
+  History,
+  Clock,
+  Trash2,
+  Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -157,6 +161,7 @@ export default function BillingPage() {
   }, [settings?.defaultBillingTab]);
 
   const [activeRoomId, setActiveRoomId] = useState<Id<"rooms"> | null>(null);
+  const [activeBookingId, setActiveBookingId] = useState<Id<"bookings"> | null>(null);
   const [activeTableKey, setActiveTableKey] = useState<string | null>(null);
   const [activeBanquetId, setActiveBanquetId] = useState<Id<"banquetBookings"> | null>(null);
   const [activeDueBillId, setActiveDueBillId] = useState<Id<"bills"> | null>(null);
@@ -181,6 +186,7 @@ export default function BillingPage() {
     { method: "cash", amount: 0 },
     { method: "card", amount: 0 },
   ]);
+  const [editHistory, setEditHistory] = useState<{ method: string; amount: number; timestamp?: number }[]>([]);
 
   const rooms = useQuery(api.rooms.getAllRooms, {}) || [];
   const bookings = useQuery(api.bookings.getAllBookings) || [];
@@ -196,6 +202,19 @@ export default function BillingPage() {
   const generateTableBill = useMutation(api.billing.generateTableBill);
   const settleDueBill = useMutation(api.billing.settleDueBill);
   const generateBanquetBill = useMutation(api.billing.generateBanquetBill);
+  const updateSplitPayments = useMutation(api.billing.updateSplitPayments);
+
+  useEffect(() => {
+    if (billDetails?.bill?.splitPayments) {
+      setEditHistory(billDetails.bill.splitPayments);
+    } else if (billDetails?.bill) {
+      setEditHistory([{
+        method: billDetails.bill.paymentMethod || "cash",
+        amount: billDetails.bill.amountPaid || 0,
+        timestamp: billDetails.bill._creationTime
+      }]);
+    }
+  }, [billDetails]);
 
   const occupiedRooms = rooms.filter(
     (r) => r.status === "occupied" || r.status === "pending_checkout"
@@ -235,73 +254,104 @@ export default function BillingPage() {
 
   const activeTablesList = Object.values(activeTablesMap);
 
-  const getActiveBooking = (roomId: Id<"rooms">) =>
-    bookings.find(
+  const getActiveBooking = (roomId: Id<"rooms">) => {
+    // If we have an explicitly selected booking, use it
+    if (activeBookingId) {
+      const b = bookings.find(x => x._id === activeBookingId);
+      if (b) return b;
+    }
+    // Fallback to room lookup
+    return bookings.find(
       (b) =>
         b.roomId === roomId &&
         (b.status === "checked_in" || b.status === "confirmed")
     );
+  };
 
   const getCharges = (roomId: Id<"rooms">) => {
     const r = rooms.find((rm) => rm._id === roomId);
     const b = getActiveBooking(roomId);
     if (!r || !b) return null;
 
-    let nights = differenceInDays(new Date(), parseISO(b.checkIn));
-    if (nights === 0) nights = 1;
+    const groupBookingId = b.groupBookingId;
+    let bookingsToSum = [b];
 
-    const roomBaseTotal = b.tariff * nights;
-    const extraBedTotal = b.extraBed ? 500 * nights : 0;
+    if (groupBookingId) {
+      bookingsToSum = bookings.filter(x => 
+        x.groupBookingId === groupBookingId && 
+        (x.status === "checked_in" || x.status === "confirmed")
+      );
+    }
 
-    let roomSubtotal =
-      roomBaseTotal +
-      extraBedTotal +
-      serviceCharge +
-      housekeepingCharge +
-      extraCharge;
-    roomSubtotal = Math.max(0, roomSubtotal - discountAmount);
+    let totalRoomBase = 0;
+    let totalExtraBed = 0;
+    let totalRestaurant = 0;
+    let totalCafe = 0;
+    let totalFoodGst = 0;
+    let totalAdvance = 0;
+    const roomsData: any[] = [];
+    const allLinkedOrders: any[] = [];
 
-    const roomCgst = includeGST
-      ? Math.round(roomSubtotal * (roomGstRate / 2))
-      : 0;
-    const roomSgst = includeGST
-      ? Math.round(roomSubtotal * (roomGstRate / 2))
-      : 0;
+    bookingsToSum.forEach(bk => {
+      const rm = rooms.find(room => room._id === bk.roomId);
+      let nights = differenceInDays(new Date(), parseISO(bk.checkIn));
+      if (nights <= 0) nights = 1;
 
-    const linkedOrders = orders.filter(
-      (o) => o.roomId === roomId && o.status !== "paid"
-    );
-    let restaurantTotal = 0,
-      cafeTotal = 0,
-      foodGstTotal = 0;
+      const base = bk.tariff * nights;
+      const extra = bk.extraBed ? 500 * nights : 0;
+      totalRoomBase += base;
+      totalExtraBed += extra;
+      totalAdvance += (bk.advance || 0);
 
-    linkedOrders.forEach((o) => {
-      const orderSubtotal = o.subtotal || o.totalAmount || 0;
-      const orderGst = o.gstAmount || 0;
-      if (o.outlet === "restaurant") restaurantTotal += orderSubtotal;
-      if (o.outlet === "cafe") cafeTotal += orderSubtotal;
-      if (includeFoodGST) foodGstTotal += orderGst;
+      const roomOrders = orders.filter(o => o.bookingId === bk._id && o.status !== "paid");
+      roomOrders.forEach(o => {
+        const orderSubtotal = o.subtotal || o.totalAmount || 0;
+        const orderGst = o.gstAmount || 0;
+        if (o.outlet === "restaurant") totalRestaurant += orderSubtotal;
+        if (o.outlet === "cafe") totalCafe += orderSubtotal;
+        if (includeFoodGST) totalFoodGst += orderGst;
+        allLinkedOrders.push(o);
+      });
+
+      roomsData.push({
+        room: rm,
+        booking: bk,
+        nights,
+        roomBaseTotal: base,
+        extraBedTotal: extra,
+        linkedOrders: roomOrders
+      });
     });
 
-    const totalOrderSubtotal = restaurantTotal + cafeTotal;
-    const cgst = roomCgst + foodGstTotal / 2;
-    const sgst = roomSgst + foodGstTotal / 2;
-    const grandTotal = roomSubtotal + totalOrderSubtotal + cgst + sgst;
+    let roomSubtotal = totalRoomBase + totalExtraBed + serviceCharge + housekeepingCharge + extraCharge;
+    roomSubtotal = Math.max(0, roomSubtotal - discountAmount);
+
+    const roomCgst = includeGST ? Math.round(roomSubtotal * (roomGstRate / 2)) : 0;
+    const roomSgst = includeGST ? Math.round(roomSubtotal * (roomGstRate / 2)) : 0;
+
+    const cgst = roomCgst + totalFoodGst / 2;
+    const sgst = roomSgst + totalFoodGst / 2;
+    const grandTotal = roomSubtotal + totalRestaurant + totalCafe + cgst + sgst;
 
     return {
-      room: r,
-      booking: b,
-      nights,
-      roomBaseTotal,
+      rooms: roomsData,
+      room: r, // Primary room
+      booking: b, // Primary booking
+      nights: roomsData[0]?.nights || 1,
+      roomBaseTotal: totalRoomBase,
       roomSubtotal,
-      restaurantTotal,
-      cafeTotal,
-      subtotal: roomSubtotal + totalOrderSubtotal,
+      restaurantTotal: totalRestaurant,
+      cafeTotal: totalCafe,
+      subtotal: roomSubtotal + totalRestaurant + totalCafe,
       cgst,
       sgst,
       grandTotal,
-      extraBedTotal,
-      linkedOrders,
+      extraBedTotal: totalExtraBed,
+      linkedOrders: allLinkedOrders,
+      foodGstTotal: totalFoodGst,
+      roomCgst,
+      roomSgst,
+      totalAdvance
     };
   };
 
@@ -331,6 +381,7 @@ export default function BillingPage() {
       });
       toast.success("Checkout successful! Invoice generated.");
       setActiveRoomId(null);
+      setActiveBookingId(null);
     } catch (e: any) {
       toast.error("Checkout failed: " + e.message);
     } finally {
@@ -494,6 +545,7 @@ export default function BillingPage() {
     dueAmountPaid,
     duePaymentMethod,
     activeDueBillId,
+    editHistory,
   };
 
   // ── Print handler — uses IPC in Electron, iframe fallback in browser ─────────
@@ -526,6 +578,22 @@ export default function BillingPage() {
   };
 
   const activeBill = dueBills.find((b) => b._id === activeDueBillId);
+
+  const handleUpdateHistory = async () => {
+    if (!activeDueBillId) return;
+    setIsSubmitting(true);
+    try {
+      await updateSplitPayments({
+        billId: activeDueBillId,
+        splitPayments: editHistory
+      });
+      toast.success("Payment history updated successfully!");
+    } catch (e: any) {
+      toast.error("Update failed: " + e.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="flex-1 bg-gray-50/50 min-h-screen pt-16 lg:pt-0">
@@ -632,67 +700,104 @@ export default function BillingPage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {occupiedRooms.map((room) => {
-                      const b = getActiveBooking(room._id);
-                      if (!b) return null;
-                      const isPending = room.status === "pending_checkout";
-                      return (
-                        <button
-                          key={room._id}
-                          onClick={() => setActiveRoomId(room._id)}
-                          className={cn(
-                            "bg-white rounded-2xl border shadow-sm text-left p-5 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5",
-                            isPending
-                              ? "border-amber-300"
-                              : "border-gray-100"
-                          )}
-                        >
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-                                <BedDouble
-                                  size={18}
-                                  className="text-gray-500"
-                                />
-                              </div>
-                              <div>
-                                <p className="text-base font-bold text-gray-900 tabular-nums">
-                                  #{room.roomNumber}
-                                </p>
-                                <p className="text-xs text-gray-400 capitalize">
-                                  {room.category}
-                                </p>
-                              </div>
-                            </div>
-                            {isPending && (
-                              <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase">
-                                Checkout
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center">
-                              <User size={13} className="text-green-700" />
-                            </div>
-                            <p className="text-sm font-semibold text-gray-800">
-                              {b.guestName}
-                            </p>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs text-gray-500">
-                              {b.checkIn}
-                            </p>
-                            <p className="text-sm font-bold text-gray-900 tabular-nums flex items-center gap-0.5">
-                              <IndianRupee size={12} />
-                              {b.tariff.toLocaleString("en-IN")}
-                              <span className="text-xs font-normal text-gray-400">
-                                /nt
-                              </span>
-                            </p>
-                          </div>
-                        </button>
+                    {(() => {
+                      const processedGroups = new Set<string>();
+                      const processedSoloBookings = new Set<string>();
+                      
+                      // Get all bookings that are currently active
+                      const activeBookings = bookings.filter(b => 
+                        b.status === "checked_in" || b.status === "confirmed"
                       );
-                    })}
+
+                      return activeBookings.map((b) => {
+                        // If it's part of a group, only process the group once
+                        if (b.groupBookingId) {
+                          if (processedGroups.has(b.groupBookingId)) return null;
+                          processedGroups.add(b.groupBookingId);
+                        } else {
+                          // If it's solo, only process it once (sanity check)
+                          if (processedSoloBookings.has(b._id)) return null;
+                          processedSoloBookings.add(b._id);
+                        }
+
+                        const groupBookings = b.groupBookingId 
+                          ? bookings.filter(x => x.groupBookingId === b.groupBookingId && (x.status === "checked_in" || x.status === "confirmed"))
+                          : [b];
+                        
+                        const roomDocs = groupBookings
+                          .map(bk => rooms.find(r => r._id === bk.roomId))
+                          .filter(Boolean);
+                        
+                        const roomNumbers = roomDocs
+                          .map(r => r?.roomNumber)
+                          .join(", ");
+                        
+                        // Check if any room in the group is "pending_checkout"
+                        const isPending = roomDocs.some(r => r?.status === "pending_checkout");
+                        
+                        const totalGroupTariff = groupBookings.reduce((sum, bk) => sum + bk.tariff, 0);
+
+                        return (
+                          <button
+                            key={b._id}
+                            onClick={() => {
+                              setActiveRoomId(b.roomId);
+                              setActiveBookingId(b._id);
+                            }}
+                            className={cn(
+                              "bg-white rounded-2xl border shadow-sm text-left p-5 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5",
+                              isPending
+                                ? "border-amber-300"
+                                : "border-gray-100"
+                            )}
+                          >
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+                                  <BedDouble
+                                    size={18}
+                                    className="text-gray-500"
+                                  />
+                                </div>
+                                <div>
+                                  <p className="text-base font-bold text-gray-900 tabular-nums">
+                                    {groupBookings.length > 1 ? `Group: ${roomNumbers}` : `#${roomNumbers}`}
+                                  </p>
+                                  <p className="text-xs text-gray-400 capitalize">
+                                    {groupBookings.length > 1 ? `${groupBookings.length} Rooms` : roomDocs[0]?.category}
+                                  </p>
+                                </div>
+                              </div>
+                              {isPending && (
+                                <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase">
+                                  Checkout
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center">
+                                <User size={13} className="text-green-700" />
+                              </div>
+                              <p className="text-sm font-semibold text-gray-800">
+                                {b.guestName}
+                              </p>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-gray-500">
+                                {b.checkIn}
+                              </p>
+                              <p className="text-sm font-bold text-gray-900 tabular-nums flex items-center gap-0.5">
+                                <IndianRupee size={12} />
+                                {totalGroupTariff.toLocaleString("en-IN")}
+                                <span className="text-xs font-normal text-gray-400">
+                                  {groupBookings.length > 1 ? " Total" : "/nt"}
+                                </span>
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      });
+                    })()}
                   </div>
                 )
               ) : activeTab === "tables" ? (
@@ -862,6 +967,7 @@ export default function BillingPage() {
               <button
                 onClick={() => {
                   setActiveRoomId(null);
+                  setActiveBookingId(null);
                   setActiveTableKey(null);
                   setActiveBanquetId(null);
                   setActiveDueBillId(null);
@@ -923,6 +1029,85 @@ export default function BillingPage() {
                             ))}
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeDueBillId && (
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 text-indigo-600">
+                          <History size={18} />
+                          <h3 className="text-sm font-bold uppercase tracking-wider">Payment History</h3>
+                        </div>
+                        <button
+                          onClick={handleUpdateHistory}
+                          disabled={isSubmitting}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                        >
+                          <Save size={12} />
+                          SAVE EDITS
+                        </button>
+                      </div>
+
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
+                        {editHistory.map((ph, idx) => (
+                          <div key={idx} className="bg-gray-50 rounded-xl p-3 border border-gray-100 relative group">
+                            <button
+                              onClick={() => {
+                                const newH = editHistory.filter((_, i) => i !== idx);
+                                setEditHistory(newH);
+                              }}
+                              className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm border border-red-200 z-10"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+
+                            <div className="flex items-center gap-2 mb-2 text-[10px] text-gray-400 font-medium">
+                              <Clock size={12} />
+                              {ph.timestamp ? format(ph.timestamp, "dd MMM yyyy, HH:mm") : "Initial Payment"}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label className="text-[9px] font-bold text-gray-500 uppercase mb-1 block">Method</Label>
+                                <select
+                                  value={ph.method}
+                                  onChange={(e) => {
+                                    const newH = [...editHistory];
+                                    newH[idx] = { ...newH[idx], method: e.target.value };
+                                    setEditHistory(newH);
+                                  }}
+                                  className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                >
+                                  <option value="cash">Cash</option>
+                                  <option value="card">Card</option>
+                                  <option value="upi">UPI</option>
+                                  <option value="room">Room</option>
+                                </select>
+                              </div>
+                              <div>
+                                <Label className="text-[9px] font-bold text-gray-500 uppercase mb-1 block">Amount (₹)</Label>
+                                <input
+                                  type="number"
+                                  value={ph.amount}
+                                  onChange={(e) => {
+                                    const newH = [...editHistory];
+                                    newH[idx] = { ...newH[idx], amount: Number(e.target.value) };
+                                    setEditHistory(newH);
+                                  }}
+                                  className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {editHistory.length === 0 && (
+                          <div className="text-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                            <p className="text-xs text-gray-400">No payment history found</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1320,9 +1505,11 @@ interface ThermalProps {
   activeDueBillId?: any;
   dueAmountPaid?: string;
   duePaymentMethod?: string;
+  editHistory: { method: string; amount: number; timestamp?: number }[];
 }
 
 function ThermalReceiptContent({
+  editHistory,
   settings,
   invoiceNumber,
   activeRoomId,
@@ -1443,7 +1630,11 @@ function ThermalReceiptContent({
           {row("Guest", currentRoomCharges.booking.guestName)}
           {companyName && row("Company", companyName)}
           {guestGst && row("GSTIN", guestGst)}
-          {row("Room", `#${currentRoomCharges.room.roomNumber} (${currentRoomCharges.room.category})`)}
+          {currentRoomCharges.rooms ? (
+            row("Rooms", currentRoomCharges.rooms.map((x: any) => `#${x.room.roomNumber}`).join(", "))
+          ) : (
+            row("Room", `#${currentRoomCharges.room.roomNumber} (${currentRoomCharges.room.category})`)
+          )}
           {row("Check-In", currentRoomCharges.booking.checkIn)}
           {row("Nights", String(currentRoomCharges.nights))}
         </>
@@ -1487,14 +1678,31 @@ function ThermalReceiptContent({
         <tbody>
           {rc ? (
             <>
-              {tableRow(
-                `Room Tariff (${rc.room.category})`,
-                `${rc.nights}N`,
-                `${rc.booking.tariff}`,
-                `${rc.roomBaseTotal.toLocaleString("en-IN")}`
+              {rc.rooms ? (
+                rc.rooms.map((rd: any, idx: number) => (
+                  <Fragment key={idx}>
+                    {tableRow(
+                      `Room ${rd.room.roomNumber} (${rd.room.category}) - ${rd.booking.plan || "EP"}`,
+                      `${rd.nights}N`,
+                      `${rd.booking.tariff}`,
+                      `${rd.roomBaseTotal.toLocaleString("en-IN")}`
+                    )}
+                    {rd.booking.extraBed &&
+                      tableRow(`Extra Bed (Rm ${rd.room.roomNumber})`, `${rd.nights}N`, "500", `${rd.extraBedTotal.toLocaleString("en-IN")}`)}
+                  </Fragment>
+                ))
+              ) : (
+                <>
+                  {tableRow(
+                    `Room Tariff (${rc.room.category}) - ${rc.booking.plan || "EP"}`,
+                    `${rc.nights}N`,
+                    `${rc.booking.tariff}`,
+                    `${rc.roomBaseTotal.toLocaleString("en-IN")}`
+                  )}
+                  {rc.booking.extraBed &&
+                    tableRow("Extra Bed", `${rc.nights}N`, "500", `${rc.extraBedTotal.toLocaleString("en-IN")}`)}
+                </>
               )}
-              {rc.booking.extraBed &&
-                tableRow("Extra Bed", `${rc.nights}N`, "500", `${rc.extraBedTotal.toLocaleString("en-IN")}`)}
               {rc.linkedOrders?.length > 0 && (
                 <>
                   <tr>
@@ -1678,8 +1886,8 @@ function ThermalReceiptContent({
           ))}
           
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 4, fontWeight: "bold" }}>
-             <span>PREVIOUSLY PAID</span>
-             <span>Rs.{(bill?.amountPaid || 0).toLocaleString("en-IN")}</span>
+             <span>TOTAL PAID</span>
+             <span>Rs.{(activeDueBillId ? editHistory.reduce((acc, curr) => acc + curr.amount, 0) : (bill?.amountPaid || 0)).toLocaleString("en-IN")}</span>
           </div>
 
           {activeDueBillId && dueAmountPaid && (
@@ -1695,7 +1903,7 @@ function ThermalReceiptContent({
           {bill?.status === "due" && (
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginTop: 6, fontWeight: "bold", borderTop: "1px solid #000", paddingTop: 4 }}>
               <span>REMAINING BALANCE</span>
-              <span>Rs.{Math.max(0, (bill?.amountDue || 0) - (activeDueBillId && dueAmountPaid ? parseFloat(dueAmountPaid) : 0)).toLocaleString("en-IN")}</span>
+              <span>Rs.{Math.max(0, (bill?.totalAmount || 0) - (activeDueBillId ? editHistory.reduce((acc, curr) => acc + curr.amount, 0) : (bill?.amountPaid || 0)) - (activeDueBillId && dueAmountPaid ? parseFloat(dueAmountPaid) : 0)).toLocaleString("en-IN")}</span>
             </div>
           )}
         </>
@@ -1728,6 +1936,7 @@ function ThermalReceiptContent({
 // ─── NormalInvoiceContent — Luxury B&W A4 Hotel Invoice ─────────────────────
 
 function NormalInvoiceContent({
+  editHistory,
   settings,
   invoiceNumber,
   activeRoomId,
@@ -1786,15 +1995,36 @@ function NormalInvoiceContent({
   const lineItems: { description: string; qty: string; rate: string; amount: number }[] = [];
 
   if (rc) {
-    lineItems.push({
-      description: `Room Accommodation — ${rc.room.category}, Room #${rc.room.roomNumber}`,
-      qty: `${rc.nights} night${rc.nights > 1 ? "s" : ""}`,
-      rate: `₹${rc.booking.tariff.toLocaleString("en-IN")}`,
-      amount: rc.roomBaseTotal,
-    });
-    if (rc.booking.extraBed) {
-      lineItems.push({ description: "Extra Bed", qty: `${rc.nights} night${rc.nights > 1 ? "s" : ""}`, rate: "₹500", amount: rc.extraBedTotal });
+    if (rc.rooms) {
+      rc.rooms.forEach((rd: any) => {
+        lineItems.push({
+          description: `Room Accommodation — Room #${rd.room.roomNumber} (${rd.room.category}) - ${rd.booking.plan || "EP"}`,
+          qty: `${rd.nights} night${rd.nights > 1 ? "s" : ""}`,
+          rate: `₹${rd.booking.tariff.toLocaleString("en-IN")}`,
+          amount: rd.roomBaseTotal,
+        });
+        if (rd.booking.extraBed) {
+          lineItems.push({
+            description: `Extra Bed (Room #${rd.room.roomNumber})`,
+            qty: `${rd.nights} night${rd.nights > 1 ? "s" : ""}`,
+            rate: "₹500",
+            amount: rd.extraBedTotal
+          });
+        }
+      });
+    } else {
+      lineItems.push({
+        description: `Room Accommodation — ${rc.room.category}, Room #${rc.room.roomNumber} - ${rc.booking.plan || "EP"}`,
+        qty: `${rc.nights} night${rc.nights > 1 ? "s" : ""}`,
+        rate: `₹${rc.booking.tariff.toLocaleString("en-IN")}`,
+        amount: rc.roomBaseTotal,
+      });
+      if (rc.booking.extraBed) {
+        lineItems.push({ description: "Extra Bed", qty: `${rc.nights} night${rc.nights > 1 ? "s" : ""}`, rate: "₹500", amount: rc.extraBedTotal });
+      }
     }
+    
+    // Linked orders for room(s)
     rc.linkedOrders?.forEach((order: any) => {
       order.items?.forEach((item: any) => {
         lineItems.push({ description: `${item.name} (${outletName(order.outlet)})`, qty: String(item.quantity), rate: `₹${item.price.toLocaleString("en-IN")}`, amount: item.quantity * item.price });
@@ -1994,11 +2224,10 @@ function NormalInvoiceContent({
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
               <tbody>
                 {[
-                  ["Room No.", `#${currentRoomCharges.room.roomNumber} · ${currentRoomCharges.room.category}`],
+                  ["Room(s)", rc.rooms ? rc.rooms.map((x: any) => `#${x.room.roomNumber}`).join(", ") : `#${rc.room.roomNumber}`],
                   ["Check-In", currentRoomCharges.booking.checkIn],
                   ["Check-Out", currentRoomCharges.booking.checkOut || format(now, "dd/MM/yyyy")],
                   ["Duration", `${currentRoomCharges.nights} Night${currentRoomCharges.nights > 1 ? "s" : ""}`],
-                  ["Tariff", `₹${currentRoomCharges.booking.tariff.toLocaleString("en-IN")} / night`],
                 ].map(([label, val], i) => (
                   <tr key={i}>
                     <td style={{ paddingBottom: 5, color: "#666", width: "45%" }}>{label}</td>
@@ -2091,9 +2320,9 @@ function NormalInvoiceContent({
             Payment Information
           </div>
 
-          {(bill?.splitPayments || splitPayments) && (bill?.splitPayments || splitPayments).filter((s: any) => s.amount > 0).length > 0 ? (
+          {(activeDueBillId ? editHistory : (bill?.splitPayments || splitPayments)) && (activeDueBillId ? editHistory : (bill?.splitPayments || splitPayments)).filter((s: any) => s.amount > 0).length > 0 ? (
             <div style={{ marginBottom: 16 }}>
-              {(bill?.splitPayments || splitPayments).filter((s: any) => s.amount > 0).map((s: any, i: number) => (
+              {(activeDueBillId ? editHistory : (bill?.splitPayments || splitPayments)).filter((s: any) => s.amount > 0).map((s: any, i: number) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 12 }}>
                   <div style={{ display: "flex", gap: 10 }}>
                     <span style={{ color: "#888", fontSize: 10 }}>{s.timestamp ? format(s.timestamp, "dd/MM/yy HH:mm") : "-"}</span>
@@ -2116,10 +2345,10 @@ function NormalInvoiceContent({
             </div>
           )}
 
-          {(activeRoomId ? currentRoomCharges?.booking?.advance : currentBanquetCharges?.advance) > 0 && (
+          {(activeRoomId ? currentRoomCharges?.totalAdvance : currentBanquetCharges?.advance) > 0 && (
             <div style={{ borderTop: "1px dashed #bbb", paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 11, color: "#777" }}>
               <span>Advance Paid</span>
-              <span style={{ fontFamily: mono }}>₹{(activeRoomId ? currentRoomCharges.booking.advance : currentBanquetCharges.advance).toLocaleString("en-IN")}</span>
+              <span style={{ fontFamily: mono }}>₹{(activeRoomId ? currentRoomCharges.totalAdvance : currentBanquetCharges.advance).toLocaleString("en-IN")}</span>
             </div>
           )}
 
@@ -2235,8 +2464,8 @@ function NormalInvoiceContent({
           {bill?.status === "due" && (
             <>
               <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#444" }}>
-                <span>Previously Paid</span>
-                <span style={{ fontFamily: mono }}>₹{(bill?.amountPaid || 0).toLocaleString("en-IN")}</span>
+                <span>Total Paid</span>
+                <span style={{ fontFamily: mono }}>₹{(activeDueBillId ? editHistory.reduce((acc, curr) => acc + curr.amount, 0) : (bill?.amountPaid || 0)).toLocaleString("en-IN")}</span>
               </div>
               {activeDueBillId && dueAmountPaid && (
                 <div style={{ marginTop: 4, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#000", fontWeight: "bold" }}>
@@ -2246,7 +2475,7 @@ function NormalInvoiceContent({
               )}
               <div style={{ borderTop: "1px solid #000", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: "bold", color: "#000" }}>
                 <span>Remaining Balance</span>
-                <span style={{ fontFamily: mono }}>₹{Math.max(0, (bill?.amountDue || 0) - (activeDueBillId && dueAmountPaid ? parseFloat(dueAmountPaid) : 0)).toLocaleString("en-IN")}</span>
+                <span style={{ fontFamily: mono }}>₹{Math.max(0, (bill?.totalAmount || 0) - (activeDueBillId ? editHistory.reduce((acc, curr) => acc + curr.amount, 0) : (bill?.amountPaid || 0)) - (activeDueBillId && dueAmountPaid ? parseFloat(dueAmountPaid) : 0)).toLocaleString("en-IN")}</span>
               </div>
             </>
           )}

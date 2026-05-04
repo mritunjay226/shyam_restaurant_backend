@@ -35,19 +35,22 @@ export default defineSchema({
     status: v.string(),            // "confirmed","checked_in","checked_out","cancelled","pending"
     gstBill: v.optional(v.boolean()),
     extraBed: v.optional(v.boolean()),
+    plan: v.optional(v.string()),                // "EP", "CP", "MAP", "AP"
     notes: v.optional(v.string()),
     source: v.optional(v.string()),              // "walk_in","phone","ota","website"
     razorpayOrderId: v.optional(v.string()),
     paymentId: v.optional(v.string()),
     paymentStatus: v.optional(v.string()),       // "pending", "paid", "failed"
     trackingCode: v.optional(v.string()),
+    groupBookingId: v.optional(v.string()),
   })
     .index("by_room", ["roomId"])
     .index("by_checkIn", ["checkIn"])
     .index("by_checkOut", ["checkOut"])
     .index("by_trackingCode", ["trackingCode"])
     .index("by_razorpayOrderId", ["razorpayOrderId"])
-    .index("by_guestPhone", ["guestPhone"]),
+    .index("by_guestPhone", ["guestPhone"])
+    .index("by_groupBookingId", ["groupBookingId"]),
 
   // GUEST PROFILES (repeat guest history)
   guests: defineTable({
@@ -77,6 +80,7 @@ export default defineSchema({
     outlet: v.string(),
     tableNumber: v.string(),
     roomId: v.optional(v.id("rooms")),
+    bookingId: v.optional(v.id("bookings")),
     kotNumber: v.optional(v.string()),           // "KOT-2025-0001"
     takenById: v.optional(v.id("staff")),        // who created the order
     items: v.array(v.object({
@@ -97,6 +101,7 @@ export default defineSchema({
   })
     .index("by_outlet_table", ["outlet", "tableNumber"])
     .index("by_room", ["roomId"])
+    .index("by_booking", ["bookingId"])
     .index("by_status", ["status"])
     .index("by_created_at", ["createdAt"]),
 

@@ -15,6 +15,7 @@ export interface RoomViewData {
   advance?: number;
   bookingId?: string;
   extraBed?: boolean;
+  groupBookingId?: string;
 }
 
 interface RoomCardProps {
@@ -101,6 +102,13 @@ export function RoomCard({ room, onClick }: RoomCardProps) {
             <p className={cn("text-xs tracking-wide uppercase", catColor)}>
               {catLabel} · Floor {floor}
             </p>
+            {room.groupBookingId && (
+              <div className="mt-1">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase tracking-widest">
+                  Group Booking
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Status Pill */}
