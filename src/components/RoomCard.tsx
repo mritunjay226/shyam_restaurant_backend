@@ -2,6 +2,10 @@
 
 import { BedDouble, User, Clock, IndianRupee, Sparkles, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMemo } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { format } from "date-fns";
 
 export interface RoomViewData {
   _id: string;
@@ -74,6 +78,25 @@ export function RoomCard({ room, onClick }: RoomCardProps) {
 
   const floor = Math.floor((parseInt(room.roomNumber) || 100) / 100);
   const isOccupied = statusKey === "occupied" || statusKey === "pending_checkout";
+  
+  const roomBookings = useQuery(
+    api.bookings.getBookingsByRoom,
+    room?._id ? { roomId: room._id as any } : "skip"
+  ) || [];
+  
+  // Active booking (checked_in or confirmed with today's check-in)
+  const activeBooking = useMemo(() => {
+    if (!roomBookings.length) return null;
+    const today = format(new Date(), "yyyy-MM-dd");
+    // Priority: checked_in > confirmed arriving today or earlier
+    return (
+      roomBookings.find((b) => b.status === "checked_in") ||
+      roomBookings.find(
+        (b) => b.status === "confirmed" && b.checkIn <= today
+      ) ||
+      null
+    );
+  }, [roomBookings]);
 
   return (
     <button
@@ -165,22 +188,24 @@ export function RoomCard({ room, onClick }: RoomCardProps) {
       </div>
 
       {/* Footer / Price Strip */}
-      <div className="relative px-5 py-3 border-t border-gray-100/80 bg-gray-50/50 group-hover:bg-gray-50/80 transition-colors flex items-center justify-between">
-        <div className="flex items-center text-gray-500 group-hover:text-gray-900 transition-colors">
-          <IndianRupee size={14} className="mr-0.5" />
-          <span className="text-base font-bold tabular-nums tracking-tight">
-            {(room.tariff || 0).toLocaleString("en-IN")}
-          </span>
-          <span className="text-xs ml-1 font-medium text-gray-400">/ night</span>
-        </div>
-
-        {statusKey === "pending_checkout" && (
-          <div className="flex items-center gap-1 text-amber-600">
-            <AlertCircle size={14} />
-            <span className="text-xs font-bold uppercase tracking-wider">Action</span>
+      {room.status !== "available" && (
+        <div className="relative px-5 py-3 border-t border-gray-100/80 bg-gray-50/50 group-hover:bg-gray-50/80 transition-colors flex items-center justify-between">
+          <div className="flex items-center text-gray-500 group-hover:text-gray-900 transition-colors">
+            <IndianRupee size={14} className="mr-0.5" />
+            <span className="text-base font-bold tabular-nums tracking-tight">
+              {(activeBooking?.totalAmount || 0).toLocaleString("en-IN")}
+            </span>
+            <span className="text-xs ml-1 font-medium text-gray-400">/ night</span>
           </div>
-        )}
-      </div>
+
+          {statusKey === "pending_checkout" && (
+            <div className="flex items-center gap-1 text-amber-600">
+              <AlertCircle size={14} />
+              <span className="text-xs font-bold uppercase tracking-wider">Action</span>
+            </div>
+          )}
+        </div>
+      )}
     </button>
   );
 }

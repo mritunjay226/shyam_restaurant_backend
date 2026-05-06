@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
+import { Doc } from "./_generated/dataModel";
 
 // ─────────────────────────────────────────────────────────────────
 // FOLIO NUMBER HELPER
@@ -178,23 +179,21 @@ async function createSingleBookingInternal(ctx: any, args: any, groupBookingId?:
   // ── 4. CLEAR PREVIOUS ACTIVE BOOKINGS FOR THIS ROOM ───────────
   // If the room was already booked (e.g. Banquet Block), we check out those bookings
   // to ensure only the newest booking is active and visible in billing.
-  const previousBlocks = await ctx.db
+  const previousBlocksRaw = await ctx.db
     .query("bookings")
     .withIndex("by_room", (q: any) => q.eq("roomId", args.roomId))
     .filter((q: any) => 
-      q.and(
-        q.or(
-          q.eq(q.field("status"), "confirmed"),
-          q.eq(q.field("status"), "checked_in")
-        ),
-        // Only auto-checkout if it's a Banquet Block or a stale block
-        q.or(
-          q.regex(q.field("guestName"), /.*\(Banquet Block\).*/),
-          q.eq(q.field("tariff"), 0)
-        )
+      q.or(
+        q.eq(q.field("status"), "confirmed"),
+        q.eq(q.field("status"), "checked_in")
       )
     )
     .collect();
+
+  // Filter in-memory for Banquet Blocks or stale blocks (tariff = 0)
+  const previousBlocks = previousBlocksRaw.filter((b: Doc<"bookings">) => 
+    b.guestName.includes("(Banquet Block)") || b.tariff === 0
+  );
 
   for (const b of previousBlocks) {
     await ctx.db.patch(b._id, { status: "checked_out" });

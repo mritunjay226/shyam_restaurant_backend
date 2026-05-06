@@ -755,13 +755,13 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                           </p>
                         </div>
                         <div className="px-4 divide-y divide-gray-50">
-                          <DetailRow
+                          {/* <DetailRow
                             icon={<IndianRupee size={14} />}
                             label="Tariff / Night"
                             value={`₹${(
                               activeBooking?.tariff || room.tariff || 0
                             ).toLocaleString()}`}
-                          />
+                          /> */}
                           <DetailRow
                             icon={<CheckCircle2 size={14} />}
                             label="Total Amount"
