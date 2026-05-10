@@ -604,6 +604,24 @@ function TableBillCard({
             </div>
           </div>
 
+          {/* Print Bill Buttons */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handlePrintProforma('thermal')}
+              className="flex-1 h-9 text-xs font-bold rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-500 hover:text-white border-amber-200 gap-1.5 transition-colors"
+            >
+              <Thermometer size={13} /> Print Thermal
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handlePrintProforma('normal')}
+              className="flex-1 h-9 text-xs font-bold rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-500 hover:text-white border-blue-200 gap-1.5 transition-colors"
+            >
+              <FileText size={13} /> Print A4
+            </Button>
+          </div>
+
           {/* Action Buttons */}
           <div className="flex gap-2">
             <Button
@@ -946,6 +964,264 @@ function ProformaNormalInvoice({ details, settings }: any) {
 }
 
 
+// ─── Quick Bill Thermal Receipt ───────────────────────────────────────────────
+function QuickBillThermalReceipt({ cart, tableNo, outlet, settings, paymentMethod, isGstBill }: {
+  cart: any[];
+  tableNo: string;
+  outlet: string;
+  settings: any;
+  paymentMethod: string;
+  isGstBill: boolean;
+}) {
+  const now = new Date();
+  const hotelName = settings?.hotelName || "Hotel";
+  const address = settings?.address || "";
+  const phone = settings?.phone || "";
+  const gstin = settings?.gstin || "";
+  const invoiceNo = `QB-${Date.now().toString().slice(-8)}`;
+
+  const subtotal = cart.reduce((s: number, i: any) => s + i.qty * i.price, 0);
+  const gstRate = (settings?.foodGst || 5) / 100;
+  const cgst = isGstBill ? Math.round(subtotal * (gstRate / 2) * 100) / 100 : 0;
+  const sgst = isGstBill ? Math.round(subtotal * (gstRate / 2) * 100) / 100 : 0;
+  const grandTotal = subtotal + cgst + sgst;
+
+  const outletLabel = outlet === "restaurant" ? "Restaurant" : outlet === "cafe" ? "Café" : outlet;
+
+  const solidDiv = { borderTop: "1px solid #000", margin: "5px 0" } as const;
+  const dashedDiv = { borderTop: "1px dashed #000", margin: "4px 0" } as const;
+
+  const row = (label: string, value: string, bold = false) => (
+    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: bold ? "bold" : "normal", fontSize: bold ? 12 : 10.5, marginBottom: 2 }}>
+      <span>{label}</span>
+      <span style={{ fontFamily: "'Courier New', monospace" }}>{value}</span>
+    </div>
+  );
+
+  const GOOGLE_REVIEW_URL_QB = "https://g.page/r/CRoioQu179CPEBM/review";
+
+  return (
+    <div style={{ color: "#000", background: "#fff", fontFamily: "'Courier New', Courier, monospace" }}>
+      {/* Header */}
+      <div style={{ textAlign: "center", marginBottom: 2 }}>
+        <div style={{ borderTop: "2px solid #000", marginBottom: 6 }} />
+        <div style={{ fontSize: 17, fontWeight: "bold", letterSpacing: "0.12em", textTransform: "uppercase" }}>{hotelName}</div>
+        <div style={{ fontSize: 9, letterSpacing: "0.06em", marginTop: 2 }}>─── ✦ ───</div>
+        <div style={{ fontSize: 10, marginTop: 3, letterSpacing: "0.04em" }}>{address}</div>
+        {phone && <div style={{ fontSize: 10 }}>Tel: {phone}</div>}
+        {isGstBill && gstin && <div style={{ fontSize: 9, marginTop: 2 }}>GSTIN: {gstin}</div>}
+        <div style={{ borderTop: "2px solid #000", marginTop: 6 }} />
+      </div>
+
+      <div style={{ textAlign: "center", fontWeight: "bold", fontSize: 11, letterSpacing: "0.15em", marginTop: 5, marginBottom: 5 }}>
+        {isGstBill ? "★  TAX INVOICE  ★" : "★  RECEIPT  ★"}
+      </div>
+
+      <div style={solidDiv} />
+      {row("Bill No.", invoiceNo)}
+      {row("Date & Time", format(now, "dd/MM/yyyy  HH:mm"))}
+      <div style={dashedDiv} />
+      {row("Type", "Walk-in")}
+      {row("Outlet", outletLabel)}
+      {row("Table No.", tableNo)}
+      {row("Payment", paymentMethod.toUpperCase())}
+      <div style={solidDiv} />
+
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", paddingBottom: 3, fontWeight: "bold", fontSize: 10, borderBottom: "1px solid #000" }}>DESCRIPTION</th>
+            <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: "bold", fontSize: 10, borderBottom: "1px solid #000" }}>QTY</th>
+            <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: "bold", fontSize: 10, borderBottom: "1px solid #000" }}>RATE</th>
+            <th style={{ textAlign: "right", paddingBottom: 3, fontWeight: "bold", fontSize: 10, borderBottom: "1px solid #000" }}>AMT</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cart.map((item: any, idx: number) => (
+            <tr key={idx}>
+              <td style={{ paddingRight: 4, wordBreak: "break-word", fontSize: 10, paddingTop: 2, paddingBottom: 2 }}>{item.name}</td>
+              <td style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 10 }}>{item.qty}</td>
+              <td style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 10 }}>{item.price}</td>
+              <td style={{ textAlign: "right", whiteSpace: "nowrap", fontWeight: "bold", fontSize: 10 }}>{(item.qty * item.price).toLocaleString("en-IN")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={solidDiv} />
+      {row("Subtotal", `Rs.${subtotal.toLocaleString("en-IN")}`)}
+      {isGstBill && (
+        <>
+          {row(`CGST @ ${(gstRate / 2) * 100}%`, `Rs.${cgst.toLocaleString("en-IN")}`)}
+          {row(`SGST @ ${(gstRate / 2) * 100}%`, `Rs.${sgst.toLocaleString("en-IN")}`)}
+        </>
+      )}
+      <div style={solidDiv} />
+
+      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: 14, marginBottom: 2, letterSpacing: "0.04em" }}>
+        <span>TOTAL BILL AMOUNT</span>
+        <span>Rs.{grandTotal.toLocaleString("en-IN")}</span>
+      </div>
+
+      <div style={solidDiv} />
+      <div style={{ textAlign: "center", fontSize: 10, marginTop: 6, lineHeight: 1.7 }}>
+        <div style={{ fontWeight: "bold", letterSpacing: "0.06em" }}>Thank you for your visit</div>
+        <div style={{ fontSize: 9 }}>We look forward to welcoming you again</div>
+        <div style={{ marginTop: 6, fontSize: 9, letterSpacing: "0.18em" }}>— ✦ —</div>
+        <div style={{ marginTop: 8, borderTop: "1px dashed #000", paddingTop: 8 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.1em", marginBottom: 4 }}>ENJOYED YOUR VISIT? LEAVE US A REVIEW</div>
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(GOOGLE_REVIEW_URL_QB)}&qzone=1&format=png`}
+            alt="Google Review QR"
+            style={{ width: 70, height: 70, display: "block", margin: "0 auto" }}
+          />
+          <div style={{ fontSize: 7, marginTop: 3, color: "#555" }}>Scan to rate us on Google</div>
+        </div>
+        <div style={{ borderTop: "1px solid #000", marginTop: 6 }} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Quick Bill A4 Normal Invoice ─────────────────────────────────────────────
+function QuickBillNormalReceipt({ cart, tableNo, outlet, settings, paymentMethod, isGstBill }: {
+  cart: any[];
+  tableNo: string;
+  outlet: string;
+  settings: any;
+  paymentMethod: string;
+  isGstBill: boolean;
+}) {
+  const now = new Date();
+  const hotelName = settings?.hotelName || "Hotel";
+  const address = settings?.address || "";
+  const phone = settings?.phone || "";
+  const email = settings?.email || "";
+  const website = settings?.website || "";
+  const gstin = settings?.gstin || "";
+  const invoiceNo = `QB-${Date.now().toString().slice(-8)}`;
+  const mono = "'Courier New', Courier, monospace";
+  const sans = "'Inter', system-ui, sans-serif";
+  const outletLabel = outlet === "restaurant" ? "Restaurant" : outlet === "cafe" ? "Café" : outlet;
+
+  const subtotal = cart.reduce((s: number, i: any) => s + i.qty * i.price, 0);
+  const gstRate = (settings?.foodGst || 5) / 100;
+  const cgst = isGstBill ? Math.round(subtotal * (gstRate / 2) * 100) / 100 : 0;
+  const sgst = isGstBill ? Math.round(subtotal * (gstRate / 2) * 100) / 100 : 0;
+  const grandTotal = subtotal + cgst + sgst;
+
+  const GOOGLE_REVIEW_URL_QB = "https://g.page/r/CRoioQu179CPEBM/review";
+
+  return (
+    <div style={{ fontFamily: sans, color: "#000", background: "#fff", width: "100%", margin: 0, padding: 0 }}>
+      {/* Header */}
+      <div style={{ padding: "40px 48px", borderBottom: "1px solid #eaeaea", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: "900", letterSpacing: "-0.02em", color: "#111" }}>{hotelName}</div>
+          <div style={{ fontSize: 10, color: "#666", marginTop: 8, lineHeight: 1.5, maxWidth: 220 }}>
+            {address}<br />
+            {phone && <>Tel: {phone}<br /></>}
+            {email && <>{email}<br /></>}
+            {website && <>{website}</>}
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 28, fontWeight: "100", letterSpacing: "-0.02em", color: "#ccc", textTransform: "uppercase" }}>
+            {isGstBill ? "TAX INVOICE" : "RECEIPT"}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Bill No.</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "#111", fontFamily: mono }}>{invoiceNo}</div>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Date</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "#111", fontFamily: mono }}>{format(now, "dd MMM yyyy")}</div>
+          </div>
+          {isGstBill && gstin && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>GSTIN</div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: "#111", fontFamily: mono }}>{gstin}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Details */}
+      <div style={{ padding: "32px 48px", display: "flex", justifyContent: "space-between", background: "#fafafa" }}>
+        <div>
+          <div style={{ fontSize: 10, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, marginBottom: 4 }}>Bill To</div>
+          <div style={{ fontSize: 14, fontWeight: "bold", color: "#111" }}>Walk-in Guest</div>
+          <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>Payment: {paymentMethod.toUpperCase()}</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 10, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, marginBottom: 4 }}>Service Area</div>
+          <div style={{ fontSize: 14, fontWeight: "bold", color: "#111" }}>{outletLabel} — {tableNo}</div>
+          <div style={{ fontSize: 11, color: "#555", marginTop: 2 }}>{format(now, "dd MMM yyyy, HH:mm")}</div>
+        </div>
+      </div>
+
+      {/* Items */}
+      <div style={{ padding: "32px 48px" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", paddingBottom: 12, borderBottom: "2px solid #000", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "#888", fontWeight: 600 }}>Description</th>
+              <th style={{ textAlign: "center", paddingBottom: 12, borderBottom: "2px solid #000", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "#888", fontWeight: 600, width: "10%" }}>Qty</th>
+              <th style={{ textAlign: "right", paddingBottom: 12, borderBottom: "2px solid #000", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "#888", fontWeight: 600, width: "20%" }}>Rate</th>
+              <th style={{ textAlign: "right", paddingBottom: 12, borderBottom: "2px solid #000", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", color: "#888", fontWeight: 600, width: "20%" }}>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cart.map((item: any, idx: number) => (
+              <tr key={idx}>
+                <td style={{ padding: "12px 0", borderBottom: "1px solid #eaeaea", fontSize: 12, color: "#111" }}>{item.name}</td>
+                <td style={{ padding: "12px 0", borderBottom: "1px solid #eaeaea", fontSize: 12, color: "#555", textAlign: "center" }}>{item.qty}</td>
+                <td style={{ padding: "12px 0", borderBottom: "1px solid #eaeaea", fontSize: 12, color: "#555", textAlign: "right", fontFamily: mono }}>{item.price.toLocaleString("en-IN")}</td>
+                <td style={{ padding: "12px 0", borderBottom: "1px solid #eaeaea", fontSize: 12, color: "#111", textAlign: "right", fontFamily: mono, fontWeight: 500 }}>{(item.qty * item.price).toLocaleString("en-IN")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Summary */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 32 }}>
+          <div style={{ width: 280, background: "#fdfdfd", padding: "22px", border: "1px solid #eaeaea", borderRadius: 8 }}>
+            <div style={{ fontSize: 8.5, fontWeight: "bold", letterSpacing: "0.2em", textTransform: "uppercase", color: "#888", marginBottom: 12, textAlign: "right" }}>Summary</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <tbody>
+                <tr><td style={{ paddingBottom: 6, color: "#555" }}>Subtotal</td><td style={{ paddingBottom: 6, textAlign: "right", fontFamily: mono }}>₹{subtotal.toLocaleString("en-IN")}</td></tr>
+                {isGstBill && (
+                  <>
+                    <tr><td style={{ paddingBottom: 6, color: "#555" }}>CGST @ {(gstRate / 2) * 100}%</td><td style={{ paddingBottom: 6, textAlign: "right", fontFamily: mono }}>₹{cgst.toLocaleString("en-IN")}</td></tr>
+                    <tr><td style={{ paddingBottom: 6, color: "#555" }}>SGST @ {(gstRate / 2) * 100}%</td><td style={{ paddingBottom: 6, textAlign: "right", fontFamily: mono }}>₹{sgst.toLocaleString("en-IN")}</td></tr>
+                  </>
+                )}
+              </tbody>
+            </table>
+            <div style={{ borderTop: "1px solid #000", marginTop: 6, paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ fontSize: 12, fontWeight: "bold", letterSpacing: "0.1em", textTransform: "uppercase" }}>Total</span>
+              <span style={{ fontSize: 20, fontWeight: "bold", fontFamily: mono, color: "#000" }}>₹{grandTotal.toLocaleString("en-IN")}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Google Review QR */}
+        <div style={{ marginTop: 32, paddingTop: 16, borderTop: "1px dashed #ddd", display: "flex", alignItems: "center", gap: 16 }}>
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(GOOGLE_REVIEW_URL_QB)}&qzone=1&format=png`}
+            alt="Google Review QR"
+            style={{ width: 80, height: 80, flexShrink: 0, display: "block" }}
+          />
+          <div>
+            <div style={{ fontSize: 11, fontWeight: "bold", color: "#000", marginBottom: 3 }}>Enjoyed your visit?</div>
+            <div style={{ fontSize: 10, color: "#555", lineHeight: 1.5 }}>Scan the QR code to leave us<br />a Google review. It helps us grow!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface POSProps {
   title: string;
   items: MenuItemType[];
@@ -963,6 +1239,41 @@ interface CartItem extends MenuItemType {
   course?: string;
 }
 
+// Hidden print targets for Quick Bill — mounted but invisible; accessed by printReceipt()
+function QuickBillHiddenTargets({ cart, activeTable, outlet, quickBillPayMethod, quickBillIsGst }: {
+  cart: CartItem[];
+  activeTable: string;
+  outlet: string;
+  quickBillPayMethod: string;
+  quickBillIsGst: boolean;
+}) {
+  const settings = useQuery(api.settings.getHotelSettings);
+  return (
+    <div style={{ position: "absolute", left: -9999, top: -9999, width: 0, height: 0, overflow: "hidden", pointerEvents: "none" }}>
+      <div id={`qb-thermal-${activeTable}`}>
+        <QuickBillThermalReceipt
+          cart={cart}
+          tableNo={activeTable}
+          outlet={outlet}
+          settings={settings}
+          paymentMethod={quickBillPayMethod}
+          isGstBill={quickBillIsGst}
+        />
+      </div>
+      <div id={`qb-normal-${activeTable}`}>
+        <QuickBillNormalReceipt
+          cart={cart}
+          tableNo={activeTable}
+          outlet={outlet}
+          settings={settings}
+          paymentMethod={quickBillPayMethod}
+          isGstBill={quickBillIsGst}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function POSMenu({ title, items, categories, accentColorClass, accentBorderClass, accentTextClass, outlet }: POSProps) {
   const [activeTable, setActiveTable] = useState("T1");
   const [activeCategory, setActiveCategory] = useState<string | undefined>();
@@ -973,11 +1284,17 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
   const [selectedRoomId, setSelectedRoomId] = useState<Id<"rooms"> | "">("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [search, setSearch] = useState("");
+  // Quick Bill print state
+  const [quickBillPrintOpen, setQuickBillPrintOpen] = useState(false);
+  const [quickBillPayMethod, setQuickBillPayMethod] = useState("cash");
+  const [quickBillIsGst, setQuickBillIsGst] = useState(false);
+  const [quickBillPrintMode, setQuickBillPrintMode] = useState<"thermal" | "normal">("thermal");
 
   const createOrder = useMutation(api.orders.createOrder);
   const directCheckout = useMutation(api.billing.directCheckoutOrder);
   const occupiedRooms = useQuery(api.rooms.getOccupiedRoomsWithGuest) || [];
   const activeOrders = useQuery(api.orders.getActiveOrdersByOutlet, { outlet }) || [];
+  const settings = useQuery(api.settings.getHotelSettings);
 
   const currentCart = carts[activeTable] || [];
 
@@ -1079,15 +1396,32 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
           notes: c.notes || undefined,
           course: c.course || undefined
         })),
-        paymentMethod: "cash",
-        isGstBill: false,
+        paymentMethod: quickBillPayMethod,
+        isGstBill: quickBillIsGst,
       });
-      toast.success(`Quick checkout for ${activeTable} done!`);
+      toast.success(`Quick Bill confirmed for ${activeTable}!`);
       clearCurrentCart();
+      setQuickBillPrintOpen(false);
     } catch (e) {
       toast.error("Failed to complete checkout.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleQuickBillPrint = async (mode: "thermal" | "normal") => {
+    try {
+      const { printReceipt } = await import("@/lib/print");
+      const targetId = mode === "thermal" ? `qb-thermal-${activeTable}` : `qb-normal-${activeTable}`;
+      const el = document.getElementById(targetId);
+      if (el) {
+        await printReceipt(el.innerHTML, mode === "thermal");
+        toast.success(`Bill printed (${mode === "thermal" ? "Thermal" : "A4"})`);
+      } else {
+        toast.error("Print template not found");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to print");
     }
   };
 
@@ -1663,10 +1997,13 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
                 <div className="flex gap-2">
                   <Button
                     disabled={isSubmitting}
-                    onClick={handleDirectCheckout}
+                    onClick={() => {
+                      setQuickBillPrintOpen(true);
+                      setIsOrderSheetOpen(false);
+                    }}
                     className="flex-1 h-11 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase tracking-wider"
                   >
-                    {isSubmitting ? "…" : "Quick Bill"}
+                    Quick Bill
                   </Button>
                   <Button
                     disabled={isSubmitting}
@@ -1681,6 +2018,182 @@ export function POSMenu({ title, items, categories, accentColorClass, accentBord
           </div>
         )}
       </AnimatePresence>
+
+      {/* ── Quick Bill Print Dialog ── */}
+      <AnimatePresence>
+        {quickBillPrintOpen && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setQuickBillPrintOpen(false)}
+            />
+            <motion.div
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 28, stiffness: 300 }}
+              className="relative bg-white w-full sm:rounded-4xl sm:max-w-2xl sm:mx-4 overflow-hidden flex flex-col max-h-[95dvh] rounded-t-4xl"
+            >
+              {/* Header */}
+              <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+                <div>
+                  <h2 className="text-xl font-black text-gray-900">Quick Bill</h2>
+                  <p className="text-xs text-gray-400 font-semibold uppercase tracking-widest mt-0.5">
+                    {activeTable} · {currentCart.length} item(s) · ₹{subtotal.toLocaleString()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setQuickBillPrintOpen(false)}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+                >
+                  <X size={16} className="text-gray-600" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {/* Options Panel */}
+                <div className="px-6 py-4 space-y-4 border-b border-gray-100">
+                  {/* Payment Method */}
+                  <div>
+                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">Payment Method</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { value: "cash", label: "Cash", emoji: "💵" },
+                        { value: "upi", label: "UPI", emoji: "📱" },
+                        { value: "card", label: "Card", emoji: "💳" },
+                      ].map((m) => (
+                        <button
+                          key={m.value}
+                          onClick={() => setQuickBillPayMethod(m.value)}
+                          className={cn(
+                            "flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border text-xs font-bold transition-all",
+                            quickBillPayMethod === m.value
+                              ? "bg-gray-900 text-white border-gray-900"
+                              : "bg-gray-50 text-gray-500 border-gray-100 hover:border-gray-300"
+                          )}
+                        >
+                          <span className="text-base">{m.emoji}</span>
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* GST Toggle */}
+                  <div className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
+                    <div>
+                      <p className="text-xs font-bold text-gray-700">GST Invoice</p>
+                      <p className="text-[10px] text-gray-400">Add CGST + SGST to bill</p>
+                    </div>
+                    <Switch checked={quickBillIsGst} onCheckedChange={setQuickBillIsGst} />
+                  </div>
+
+                  {/* Print Mode Toggle */}
+                  <div>
+                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">Bill Format</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setQuickBillPrintMode("thermal")}
+                        className={cn(
+                          "flex-1 flex items-center justify-center gap-2 h-9 rounded-xl border text-xs font-bold transition-all",
+                          quickBillPrintMode === "thermal"
+                            ? "bg-gray-900 text-white border-gray-900"
+                            : "bg-gray-50 text-gray-500 border-gray-100 hover:border-gray-300"
+                        )}
+                      >
+                        <Thermometer size={14} /> Thermal (80mm)
+                      </button>
+                      <button
+                        onClick={() => setQuickBillPrintMode("normal")}
+                        className={cn(
+                          "flex-1 flex items-center justify-center gap-2 h-9 rounded-xl border text-xs font-bold transition-all",
+                          quickBillPrintMode === "normal"
+                            ? "bg-gray-900 text-white border-gray-900"
+                            : "bg-gray-50 text-gray-500 border-gray-100 hover:border-gray-300"
+                        )}
+                      >
+                        <FileText size={14} /> A4 Bill
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bill Preview */}
+                <div className="px-6 py-4">
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3">
+                    Bill Preview ({quickBillPrintMode === "thermal" ? "80mm Thermal" : "A4"})
+                  </p>
+                  {quickBillPrintMode === "thermal" ? (
+                    <div
+                      className="mx-auto border border-dashed border-gray-200 rounded p-3"
+                      style={{ maxWidth: 320, fontFamily: "'Courier New', monospace", fontSize: 12, lineHeight: 1.5 }}
+                    >
+                      <QuickBillThermalReceipt
+                        cart={currentCart}
+                        tableNo={activeTable}
+                        outlet={outlet}
+                        settings={settings}
+                        paymentMethod={quickBillPayMethod}
+                        isGstBill={quickBillIsGst}
+                      />
+                    </div>
+                  ) : (
+                    <div className="mx-auto shadow-xl rounded overflow-hidden" style={{ maxWidth: 540, transform: "scale(0.97)", transformOrigin: "top center" }}>
+                      <QuickBillNormalReceipt
+                        cart={currentCart}
+                        tableNo={activeTable}
+                        outlet={outlet}
+                        settings={settings}
+                        paymentMethod={quickBillPayMethod}
+                        isGstBill={quickBillIsGst}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Bar */}
+              <div className="shrink-0 px-6 py-4 bg-gray-50 border-t border-gray-100 space-y-3">
+                {/* Print Buttons */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleQuickBillPrint("thermal")}
+                    className="flex-1 h-10 rounded-xl text-xs font-bold border-gray-200 bg-white hover:bg-gray-50 gap-2"
+                  >
+                    <Thermometer size={14} /> Print Thermal
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleQuickBillPrint("normal")}
+                    className="flex-1 h-10 rounded-xl text-xs font-bold border-gray-200 bg-white hover:bg-gray-50 gap-2"
+                  >
+                    <FileText size={14} /> Print A4
+                  </Button>
+                </div>
+                {/* Confirm checkout */}
+                <Button
+                  onClick={handleDirectCheckout}
+                  disabled={isSubmitting}
+                  className="w-full h-11 bg-gray-900 hover:bg-gray-700 text-white font-black text-xs uppercase tracking-wider rounded-xl"
+                >
+                  {isSubmitting ? "Processing…" : `Confirm & Checkout · ₹${subtotal.toLocaleString()}`}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Hidden Quick Bill Print Targets */}
+      <QuickBillHiddenTargets
+        cart={currentCart}
+        activeTable={activeTable}
+        outlet={outlet}
+        quickBillPayMethod={quickBillPayMethod}
+        quickBillIsGst={quickBillIsGst}
+      />
     </div>
   );
 }
