@@ -758,6 +758,7 @@ export const updateBill = mutation({
     status: v.optional(v.string()),
     paymentMethod: v.optional(v.string()),
     createdAt: v.optional(v.string()),
+    discountAmount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { billId, ...updates } = args;

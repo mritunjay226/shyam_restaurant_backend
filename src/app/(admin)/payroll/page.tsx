@@ -159,7 +159,7 @@ export default function PayrollPage() {
                         <div className="flex items-center gap-3">
                           <Avatar name={row.name} size="md" />
                           <div>
-                            <p className="font-bold text-gray-900 leading-tight">{row.name}</p>
+                            <p className="font-bold text-gray-900 leading-tight capitalize">{row.name}</p>
                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-0.5">{row.role.replace("_", " ")}</p>
                           </div>
                         </div>

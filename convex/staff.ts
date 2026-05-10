@@ -63,12 +63,13 @@ export const createStaff = mutation({
 
     const hashed = await hashPin(args.pin);
 
-    // Ensure PIN hash is unique
+    // Ensure PIN hash is unique among active staff
     const existing = await ctx.db
       .query("staff")
       .withIndex("by_pin", (q: any) => q.eq("pin", hashed))
+      .filter((q: any) => q.eq(q.field("isActive"), true))
       .first();
-    if (existing) throw new Error("This PIN is already in use by another staff member.");
+    if (existing) throw new Error("This PIN is already in use by an active staff member.");
 
     return await ctx.db.insert("staff", {
       name: args.name,
@@ -99,13 +100,14 @@ export const updateStaff = mutation({
 
     if (args.pin) {
       const hashed = await hashPin(args.pin);
-      // Ensure uniqueness
+      // Ensure uniqueness among active staff
       const existing = await ctx.db
         .query("staff")
         .withIndex("by_pin", (q: any) => q.eq("pin", hashed))
+        .filter((q: any) => q.eq(q.field("isActive"), true))
         .first();
       if (existing && existing._id !== args.staffId) {
-        throw new Error("This PIN is already in use by another staff member.");
+        throw new Error("This PIN is already in use by an active staff member.");
       }
       updates.pin = hashed;
     }

@@ -280,13 +280,14 @@ export const changeMyPin = mutation({
     // 3. Update to new PIN
     const hashedNew = await hashPin(args.newPin);
     
-    // Ensure uniqueness across staff (optional but recommended for PINs)
+    // Ensure uniqueness across active staff
     const existing = await ctx.db
       .query("staff")
       .withIndex("by_pin", (q: any) => q.eq("pin", hashedNew))
+      .filter((q: any) => q.eq(q.field("isActive"), true))
       .first();
     if (existing && existing._id !== staff._id) {
-      throw new Error("This PIN is already being used by another staff member.");
+      throw new Error("This PIN is already being used by an active staff member.");
     }
 
     await ctx.db.patch(staff._id, { 

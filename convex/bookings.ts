@@ -588,6 +588,8 @@ export const updateBooking = mutation({
     bookingId: v.id("bookings"),
     guestName: v.optional(v.string()),
     guestPhone: v.optional(v.string()),
+    idType: v.optional(v.string()),
+    idNumber: v.optional(v.string()),
     checkIn: v.optional(v.string()),
     checkOut: v.optional(v.string()),
     tariff: v.optional(v.number()),
@@ -595,6 +597,8 @@ export const updateBooking = mutation({
     totalAmount: v.optional(v.number()),
     status: v.optional(v.string()),
     notes: v.optional(v.string()),
+    plan: v.optional(v.string()),
+    extraBed: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { bookingId, ...updates } = args;
@@ -613,6 +617,24 @@ export const updateBooking = mutation({
     const newTotal = updates.totalAmount ?? old.totalAmount;
     const newAdvance = updates.advance ?? old.advance;
     const balance = newTotal - newAdvance;
+
+    if (updates.advance !== undefined && updates.advance > old.advance) {
+      const difference = updates.advance - old.advance;
+      await ctx.db.insert("bills", {
+        billType: "room",
+        referenceId: bookingId as string,
+        guestName: updates.guestName ?? old.guestName,
+        isGstBill: false,
+        subtotal: difference,
+        cgst: 0,
+        sgst: 0,
+        totalAmount: difference,
+        advancePaid: difference,
+        paymentMethod: "cash",
+        status: "paid",
+        createdAt: new Date().toISOString().split("T")[0],
+      });
+    }
 
     return await ctx.db.patch(bookingId, { ...updates, balance });
   },

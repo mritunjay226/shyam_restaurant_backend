@@ -28,6 +28,7 @@ import {
   IndianRupee,
   Clock,
   CheckCircle2,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DatePicker } from "./ui/date-picker";
@@ -99,6 +100,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFutureBookingMode, setIsFutureBookingMode] = useState(false);
+  const [isEditingStay, setIsEditingStay] = useState(false);
   const [selectedRooms, setSelectedRooms] = useState<{
     roomId: any;
     roomNumber: string;
@@ -119,6 +121,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const createBooking = useMutation(api.bookings.createBooking);
   const checkoutMutation = useMutation(api.bookings.checkOut);
   const updateRoomStatus = useMutation(api.rooms.updateRoomStatus);
+  const updateBooking = useMutation(api.bookings.updateBooking);
 
   // All bookings for this room
   const roomBookings = useQuery(
@@ -193,8 +196,39 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
       setCheckOut("");
       setNotes("");
       setIsFutureBookingMode(false);
+      setIsEditingStay(false);
     }
   }, [room]);
+
+  useEffect(() => {
+    if (isEditingStay && activeBooking) {
+      setGuestName(activeBooking.guestName || "");
+      const fullPhone = activeBooking.guestPhone || "";
+      let cCode = "+91";
+      let pNum = fullPhone;
+      if (fullPhone.startsWith("+")) {
+        const match = fullPhone.match(/^(\+\d{1,3})(.*)$/);
+        if (match) {
+          cCode = match[1];
+          pNum = match[2];
+        }
+      }
+      setCountryCode(cCode);
+      setPhone(pNum);
+      setIdType(activeBooking.idType || "Aadhar");
+      setIdNumber(activeBooking.idNumber || "");
+      setCheckOut(activeBooking.checkOut || "");
+      setSelectedRooms([{
+        roomId: room?._id,
+        roomNumber: room?.roomNumber || "",
+        tariff: activeBooking.tariff?.toString() || "0",
+        extraBed: activeBooking.extraBed || false,
+        plan: activeBooking.plan || "EP"
+      }]);
+      setAdvance(activeBooking.advance?.toString() || "0");
+      setNotes(activeBooking.notes || "");
+    }
+  }, [isEditingStay, activeBooking, room]);
 
   const onPointerDown = (e: React.PointerEvent) => e.stopPropagation();
 
@@ -231,6 +265,46 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const handleCheckOut = () => {
     router.push("/billing");
     onClose();
+  };
+
+  const handleUpdateStay = async () => {
+    if (!guestName || !phone || !checkOut || selectedRooms.length === 0)
+      return alert("Please fill all required fields");
+    if (!activeBooking) return;
+    setIsSubmitting(true);
+    try {
+      const sr = selectedRooms[0];
+      const newComputedDays = Math.max(1, differenceInDays(new Date(checkOut), new Date(activeBooking.checkIn)));
+      const totalAmt = (parseInt(sr.tariff || "0") + (sr.extraBed ? 500 : 0)) * newComputedDays;
+      
+      let finalPhone = phone;
+      if (!phone.startsWith("+") && countryCode) {
+        finalPhone = `${countryCode}${phone}`;
+      } else if (phone.startsWith("+")) {
+        finalPhone = phone;
+      }
+
+      await updateBooking({
+        bookingId: activeBooking._id as Id<"bookings">,
+        guestName,
+        guestPhone: finalPhone,
+        idType,
+        idNumber,
+        checkOut,
+        tariff: parseInt(sr.tariff || "0"),
+        extraBed: sr.extraBed,
+        plan: sr.plan,
+        advance: parseInt(advance || "0"),
+        totalAmount: totalAmt,
+        notes,
+      });
+      setIsEditingStay(false);
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || "Error updating stay");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleMarkClean = async () => {
@@ -629,7 +703,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
               {/* ── OCCUPIED / PENDING_CHECKOUT: Full Guest Details ── */}
               {isOccupied && (
                 <div className="space-y-6">
-                  {!isFutureBookingMode ? (
+                  {!isFutureBookingMode && !isEditingStay ? (
                     <>
                       {/* Guest Identity Card */}
                       <div className="bg-linear-to-br from-gray-50 to-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -660,6 +734,13 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                                 {activeBooking.status.replace("_", " ")}
                               </span>
                             )}
+                            <Button
+                              onClick={() => setIsEditingStay(true)}
+                              variant="outline"
+                              className="rounded-xl border-gray-200 text-gray-700 hover:bg-gray-50 gap-1.5 h-8 px-2.5 text-xs mr-2"
+                            >
+                              <Pencil size={12} /> Edit
+                            </Button>
                             <Button
                               onClick={() => setIsFutureBookingMode(true)}
                               variant="outline"
@@ -788,6 +869,118 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                         </div>
                       </div>
                     </>
+                  ) : isEditingStay ? (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className="space-y-6 overflow-hidden"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-bold text-gray-900">
+                          Edit Check-In Details
+                        </h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setIsEditingStay(false)}
+                          className="h-7 text-xs"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-gray-700">Full Name</Label>
+                            <Input value={guestName} onChange={(e) => setGuestName(e.target.value)} onPointerDown={onPointerDown} className="h-11 rounded-xl bg-gray-50 border-gray-200" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-gray-700">Phone</Label>
+                            <div className="flex gap-2">
+                              <Input value={countryCode} onChange={(e) => setCountryCode(e.target.value)} className="h-11 w-20 rounded-xl bg-gray-50 border-gray-200" placeholder="+91" onPointerDown={onPointerDown} />
+                              <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" className="h-11 flex-1 rounded-xl bg-gray-50 border-gray-200" onPointerDown={onPointerDown} />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-gray-700">ID Type</Label>
+                            <select value={idType} onChange={(e) => setIdType(e.target.value)} onPointerDown={onPointerDown} className="w-full h-11 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500/20">
+                              <option value="Aadhar">Aadhar</option>
+                              <option value="PAN">PAN</option>
+                              <option value="Driving License">Driving License</option>
+                              <option value="Passport">Passport</option>
+                              <option value="Voter ID">Voter ID</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-gray-700">ID Number</Label>
+                            <Input value={idNumber} onChange={(e) => setIdNumber(e.target.value)} className="h-11 rounded-xl bg-gray-50 border-gray-200 uppercase" onPointerDown={onPointerDown} />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-gray-700">Check-out Date</Label>
+                          <DatePicker date={checkOut ? new Date(checkOut) : undefined} setDate={(d) => setCheckOut(d ? format(d, "yyyy-MM-dd") : "")} />
+                        </div>
+                        
+                        {selectedRooms.map((sr, i) => (
+                          <div key={i} className="space-y-4 p-4 border border-gray-200 rounded-xl bg-gray-50/50">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-bold text-gray-700">Room {sr.roomNumber}</h4>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold text-gray-700">Tariff / Night</Label>
+                                <Input type="number" value={sr.tariff} onChange={(e) => {
+                                  const newRooms = [...selectedRooms];
+                                  newRooms[i].tariff = e.target.value;
+                                  setSelectedRooms(newRooms);
+                                }} onPointerDown={onPointerDown} className="h-11 rounded-xl bg-white" />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold text-gray-700">Meal Plan</Label>
+                                <select value={sr.plan} onChange={(e) => {
+                                  const newRooms = [...selectedRooms];
+                                  newRooms[i].plan = e.target.value;
+                                  setSelectedRooms(newRooms);
+                                }} onPointerDown={onPointerDown} className="w-full h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm outline-none">
+                                  <option value="EP">EP (Room Only)</option>
+                                  <option value="CP">CP (Breakfast)</option>
+                                  <option value="MAP">MAP (Bkfst + 1 Meal)</option>
+                                  <option value="AP">AP (All Meals)</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between pt-2">
+                              <Label className="text-sm font-semibold text-gray-700">Extra Bed (+₹500)</Label>
+                              <Switch checked={sr.extraBed} onCheckedChange={(checked) => {
+                                const newRooms = [...selectedRooms];
+                                newRooms[i].extraBed = checked;
+                                setSelectedRooms(newRooms);
+                              }} />
+                            </div>
+                          </div>
+                        ))}
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-gray-700">Total Advance Paid</Label>
+                          <Input type="number" value={advance} onChange={(e) => setAdvance(e.target.value)} onPointerDown={onPointerDown} className="h-11 rounded-xl bg-green-50 border-green-200 text-green-700 font-bold" />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-gray-700">Notes</Label>
+                          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onPointerDown={onPointerDown} className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm h-20 outline-none" />
+                        </div>
+                        
+                        <Button onClick={handleUpdateStay} disabled={isSubmitting} className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-500/20">
+                          {isSubmitting ? "Saving..." : "Save Changes"}
+                        </Button>
+                      </div>
+                    </motion.div>
                   ) : (
                     /* Future Booking Form */
                     <motion.div
