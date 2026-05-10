@@ -376,4 +376,170 @@ export const getSummaryStats = query({
       }
     };
   },
+});
+
+export const getExportData = query({
+  args: {
+    module: v.string(), // "all" | "rooms" | "restaurant" | "banquet" | "cafe" | "grocery"
+    dataType: v.string(), // "bills" | "bookings" | "orders"
+    fromDate: v.string(), // "YYYY-MM-DD"
+    toDate: v.string(), // "YYYY-MM-DD"
+  },
+  handler: async (ctx, args) => {
+    const { module, dataType, fromDate, toDate } = args;
+
+    // Helper to format date
+    const formatDate = (dateStr: string) => {
+      if (!dateStr) return "";
+      try {
+        // Handle ISO strings with time
+        if (dateStr.includes("T")) {
+          return new Date(dateStr).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+        }
+        return new Date(dateStr).toLocaleDateString("en-US", { dateStyle: "medium" });
+      } catch {
+        return dateStr;
+      }
+    };
+
+    if (dataType === "bills") {
+      let bills = await ctx.db
+        .query("bills")
+        .withIndex("by_createdAt", (q: any) =>
+          q.gte("createdAt", fromDate).lte("createdAt", toDate + "T23:59:59")
+        )
+        .collect();
+
+      if (module !== "all") {
+        const typeMap: Record<string, string> = {
+          "rooms": "room",
+          "restaurant": "restaurant",
+          "cafe": "cafe",
+          "banquet": "banquet",
+          "grocery": "grocery"
+        };
+        const targetType = typeMap[module];
+        if (targetType) {
+          bills = bills.filter(b => b.billType === targetType);
+        }
+      }
+
+      return bills.map(b => ({
+        "Date": formatDate(b.createdAt),
+        "Bill Type": b.billType.toUpperCase(),
+        "Guest Name": b.guestName,
+        "Subtotal (Rs)": b.subtotal,
+        "Discount (Rs)": b.discountAmount || 0,
+        "CGST (Rs)": b.cgst,
+        "SGST (Rs)": b.sgst,
+        "Total Amount (Rs)": b.totalAmount,
+        "Status": b.status.toUpperCase(),
+        "Payment Method": b.paymentMethod || "N/A"
+      }));
+    }
+
+    if (dataType === "bookings") {
+      let results: any[] = [];
+      
+      // Rooms Bookings
+      if (module === "all" || module === "rooms") {
+        const roomBookings = await ctx.db
+          .query("bookings")
+          .withIndex("by_checkIn", (q: any) =>
+            q.gte("checkIn", fromDate).lte("checkIn", toDate + "T23:59:59")
+          )
+          .collect();
+          
+        results = results.concat(roomBookings.map(b => ({
+          "name": b.guestName || "N/A",
+          "phone number": b.guestPhone || "N/A",
+          "dates": `${formatDate(b.checkIn)} to ${formatDate(b.checkOut)}`,
+          "status": b.status.toUpperCase(),
+          "notes": b.notes || "None",
+          "total": b.totalAmount || 0,
+          "advance": b.advance || 0,
+          "remaining": (b.totalAmount || 0) - (b.advance || 0)
+        })));
+      }
+
+      // Banquet Bookings
+      if (module === "all" || module === "banquet") {
+        const banquetBookings = await ctx.db
+          .query("banquetBookings")
+          .withIndex("by_eventDate", (q: any) =>
+            q.gte("eventDate", fromDate).lte("eventDate", toDate)
+          )
+          .collect();
+
+        results = results.concat(banquetBookings.map(b => ({
+          "name": b.guestName || "N/A",
+          "phone number": b.guestPhone || "N/A",
+          "dates": formatDate(b.eventDate),
+          "status": b.status.toUpperCase(),
+          "notes": b.eventName || "None",
+          "total": b.totalAmount || 0,
+          "advance": b.advance || 0,
+          "remaining": (b.totalAmount || 0) - (b.advance || 0)
+        })));
+      }
+      
+      return results;
+    }
+
+    if (dataType === "orders") {
+      let results: any[] = [];
+
+      if (module === "all" || module === "restaurant" || module === "cafe" || module === "banquet" || module === "rooms") {
+        let orders = await ctx.db
+          .query("orders")
+          .withIndex("by_created_at", (q: any) =>
+            q.gte("createdAt", fromDate).lte("createdAt", toDate + "T23:59:59")
+          )
+          .collect();
+
+        if (module !== "all") {
+          orders = orders.filter(o => o.outlet === module);
+        }
+
+        results = results.concat(orders.flatMap(o => 
+          o.items.map(item => ({
+            "Date": formatDate(o.createdAt),
+            "Outlet": o.outlet.toUpperCase(),
+            "Table/Room": o.tableNumber || "N/A",
+            "Item Name": item.name,
+            "Quantity": item.quantity,
+            "Price (Rs)": item.price,
+            "Item Total (Rs)": item.price * item.quantity,
+            "Order Status": o.status.toUpperCase()
+          }))
+        ));
+      }
+
+      if (module === "all" || module === "grocery") {
+        const grocery = await ctx.db
+          .query("grocerySales")
+          .withIndex("by_createdAt", (q: any) =>
+             q.gte("createdAt", fromDate).lte("createdAt", toDate + "T23:59:59")
+          )
+          .collect();
+
+        results = results.concat(grocery.flatMap(g => 
+          g.items.map(item => ({
+            "Date": formatDate(g.createdAt),
+            "Outlet": "GROCERY",
+            "Table/Room": "N/A",
+            "Item Name": item.name,
+            "Quantity": item.quantity,
+            "Price (Rs)": item.sellingPrice,
+            "Item Total (Rs)": item.sellingPrice * item.quantity,
+            "Order Status": g.status.toUpperCase()
+          }))
+        ));
+      }
+
+      return results;
+    }
+
+    return [];
+  }
 });

@@ -9,11 +9,14 @@ import { DesktopTopbar } from "@/components/Topbar";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { format } from "date-fns";
+import { ExportModal } from "./_components/ExportModal";
 
 const DEFAULT_SPARK = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 export default function ReportsPage() {
   const [mounted, setMounted] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -47,8 +50,11 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-full">
-      <DesktopTopbar title="Analytics & Reports" />
+    <div className="flex flex-col min-h-full print:bg-white print:text-black">
+      <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} />
+      <div className="print:hidden">
+        <DesktopTopbar title="Analytics & Reports" />
+      </div>
 
       <div className="p-5 lg:p-6 space-y-5 max-w-7xl mx-auto w-full pb-24 lg:pb-6">
         {/* Header */}
@@ -57,12 +63,9 @@ export default function ReportsPage() {
             <h1 className="text-xl font-bold text-gray-900">Analytics & Reports</h1>
             <p className="text-sm text-gray-500 mt-0.5">Year-to-date performance overview</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="gap-2 rounded-xl border-gray-200 text-gray-600 hover:text-green-700 hover:border-green-200 text-sm">
-              <Download size={15} /> PDF
-            </Button>
-            <Button variant="outline" className="gap-2 rounded-xl border-gray-200 text-gray-600 hover:text-green-700 hover:border-green-200 text-sm">
-              <Download size={15} /> Excel
+          <div className="flex gap-2 print:hidden">
+            <Button onClick={() => setIsExportModalOpen(true)} variant="outline" className="gap-2 rounded-xl border-gray-200 text-gray-600 hover:text-green-700 hover:border-green-200 text-sm">
+              <Download size={15} /> Export Reports
             </Button>
           </div>
         </div>
