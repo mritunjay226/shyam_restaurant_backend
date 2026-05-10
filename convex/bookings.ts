@@ -618,22 +618,43 @@ export const updateBooking = mutation({
     const newAdvance = updates.advance ?? old.advance;
     const balance = newTotal - newAdvance;
 
-    if (updates.advance !== undefined && updates.advance > old.advance) {
-      const difference = updates.advance - old.advance;
-      await ctx.db.insert("bills", {
-        billType: "room",
-        referenceId: bookingId as string,
-        guestName: updates.guestName ?? old.guestName,
-        isGstBill: false,
-        subtotal: difference,
-        cgst: 0,
-        sgst: 0,
-        totalAmount: difference,
-        advancePaid: difference,
-        paymentMethod: "cash",
-        status: "paid",
-        createdAt: new Date().toISOString().split("T")[0],
-      });
+    if (updates.advance !== undefined && updates.advance !== old.advance) {
+      const existingBill = await ctx.db
+        .query("bills")
+        .filter((q) => 
+          q.and(
+            q.eq(q.field("billType"), "room"),
+            q.eq(q.field("referenceId"), bookingId)
+          )
+        )
+        .first();
+
+      if (existingBill) {
+        if (updates.advance > 0) {
+          await ctx.db.patch(existingBill._id, {
+            subtotal: updates.advance,
+            totalAmount: updates.advance,
+            advancePaid: updates.advance,
+          });
+        } else {
+          await ctx.db.delete(existingBill._id);
+        }
+      } else if (updates.advance > 0) {
+        await ctx.db.insert("bills", {
+          billType: "room",
+          referenceId: bookingId as string,
+          guestName: updates.guestName ?? old.guestName,
+          isGstBill: false,
+          subtotal: updates.advance,
+          cgst: 0,
+          sgst: 0,
+          totalAmount: updates.advance,
+          advancePaid: updates.advance,
+          paymentMethod: "cash",
+          status: "paid",
+          createdAt: new Date().toISOString().split("T")[0],
+        });
+      }
     }
 
     return await ctx.db.patch(bookingId, { ...updates, balance });
@@ -655,6 +676,21 @@ export const deleteBooking = mutation({
         });
       }
     }
+
+    const existingBill = await ctx.db
+      .query("bills")
+      .filter((q) => 
+        q.and(
+          q.eq(q.field("billType"), "room"),
+          q.eq(q.field("referenceId"), args.bookingId)
+        )
+      )
+      .first();
+
+    if (existingBill) {
+      await ctx.db.delete(existingBill._id);
+    }
+
     await ctx.db.delete(args.bookingId);
   },
 });

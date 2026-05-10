@@ -29,6 +29,7 @@ import {
   Clock,
   CheckCircle2,
   Pencil,
+  Trash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DatePicker } from "./ui/date-picker";
@@ -122,6 +123,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
   const checkoutMutation = useMutation(api.bookings.checkOut);
   const updateRoomStatus = useMutation(api.rooms.updateRoomStatus);
   const updateBooking = useMutation(api.bookings.updateBooking);
+  const deleteBookingMutation = useMutation(api.bookings.deleteBooking);
 
   // All bookings for this room
   const roomBookings = useQuery(
@@ -217,6 +219,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
       setPhone(pNum);
       setIdType(activeBooking.idType || "Aadhar");
       setIdNumber(activeBooking.idNumber || "");
+      setCheckIn(activeBooking.checkIn || format(new Date(), "yyyy-MM-dd"));
       setCheckOut(activeBooking.checkOut || "");
       setSelectedRooms([{
         roomId: room?._id,
@@ -274,7 +277,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
     setIsSubmitting(true);
     try {
       const sr = selectedRooms[0];
-      const newComputedDays = Math.max(1, differenceInDays(new Date(checkOut), new Date(activeBooking.checkIn)));
+      const newComputedDays = Math.max(1, differenceInDays(new Date(checkOut + "T00:00:00"), new Date(checkIn + "T00:00:00")));
       const totalAmt = (parseInt(sr.tariff || "0") + (sr.extraBed ? 500 : 0)) * newComputedDays;
       
       let finalPhone = phone;
@@ -290,6 +293,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
         guestPhone: finalPhone,
         idType,
         idNumber,
+        checkIn,
         checkOut,
         tariff: parseInt(sr.tariff || "0"),
         extraBed: sr.extraBed,
@@ -302,6 +306,26 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
     } catch (e: any) {
       console.error(e);
       alert(e.message || "Error updating stay");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteStay = async () => {
+    if (!activeBooking) return;
+    const confirmDelete = window.confirm("Are you sure you want to delete this check-in? This action cannot be undone and will delete associated bills and adjust the guest's total spend.");
+    if (!confirmDelete) return;
+
+    setIsSubmitting(true);
+    try {
+      await deleteBookingMutation({ bookingId: activeBooking._id as Id<"bookings"> });
+      if (room) {
+        await updateRoomStatus({ roomId: room._id as any, status: "available" });
+      }
+      onClose();
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || "Error deleting stay");
     } finally {
       setIsSubmitting(false);
     }
@@ -879,14 +903,6 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                         <h3 className="text-sm font-bold text-gray-900">
                           Edit Check-In Details
                         </h3>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setIsEditingStay(false)}
-                          className="h-7 text-xs"
-                        >
-                          Cancel
-                        </Button>
                       </div>
 
                       <div className="space-y-4">
@@ -922,9 +938,19 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                           </div>
                         </div>
 
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold text-gray-700">Check-out Date</Label>
-                          <DatePicker date={checkOut ? new Date(checkOut) : undefined} setDate={(d) => setCheckOut(d ? format(d, "yyyy-MM-dd") : "")} />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-gray-700">Check-in Date</Label>
+                            <DatePicker date={checkIn ? new Date(checkIn + "T00:00:00") : undefined} setDate={(d) => setCheckIn(d ? format(d, "yyyy-MM-dd") : "")} />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-gray-700">Check-out Date</Label>
+                            <DatePicker 
+                              date={checkOut ? new Date(checkOut + "T00:00:00") : undefined} 
+                              setDate={(d) => setCheckOut(d ? format(d, "yyyy-MM-dd") : "")} 
+                              min={checkIn ? new Date(checkIn + "T00:00:00") : undefined}
+                            />
+                          </div>
                         </div>
                         
                         {selectedRooms.map((sr, i) => (
@@ -975,10 +1001,6 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                           <Label className="text-xs font-semibold text-gray-700">Notes</Label>
                           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onPointerDown={onPointerDown} className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm h-20 outline-none" />
                         </div>
-                        
-                        <Button onClick={handleUpdateStay} disabled={isSubmitting} className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-500/20">
-                          {isSubmitting ? "Saving..." : "Save Changes"}
-                        </Button>
                       </div>
                     </motion.div>
                   ) : (
@@ -1062,7 +1084,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                               New Check-in
                             </Label>
                             <DatePicker
-                              date={checkIn ? new Date(checkIn) : undefined}
+                              date={checkIn ? new Date(checkIn + "T00:00:00") : undefined}
                               setDate={(d) =>
                                 setCheckIn(d ? format(d, "yyyy-MM-dd") : "")
                               }
@@ -1075,12 +1097,12 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                               New Check-out
                             </Label>
                             <DatePicker
-                              date={checkOut ? new Date(checkOut) : undefined}
+                              date={checkOut ? new Date(checkOut + "T00:00:00") : undefined}
                               setDate={(d) =>
                                 setCheckOut(d ? format(d, "yyyy-MM-dd") : "")
                               }
                               label="Check-out Date"
-                              min={checkIn ? new Date(checkIn) : undefined}
+                              min={checkIn ? new Date(checkIn + "T00:00:00") : undefined}
                               disabled={disabledDates}
                               align="end"
                             />
@@ -1161,7 +1183,30 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
 
               {isOccupied && (
                 <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
-                  {!isFutureBookingMode ? (
+                  {isEditingStay ? (
+                    <div className="flex w-full gap-2">
+                      <Button 
+                        onClick={handleDeleteStay} 
+                        disabled={isSubmitting} 
+                        variant="outline"
+                        className="w-12 h-12 rounded-xl text-rose-500 border-rose-200 hover:bg-rose-50 hover:border-rose-300 shrink-0 shadow-xs"
+                        title="Delete Check-in"
+                      >
+                        <Trash size={18} />
+                      </Button>
+                      <Button
+                        onClick={() => setIsEditingStay(false)}
+                        disabled={isSubmitting}
+                        variant="outline"
+                        className="flex-1 h-12 rounded-xl border-gray-200 text-gray-700 hover:bg-gray-100 font-bold"
+                      >
+                        Cancel
+                      </Button>
+                      <Button onClick={handleUpdateStay} disabled={isSubmitting} className="flex-1 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-500/20">
+                        {isSubmitting ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
+                  ) : !isFutureBookingMode ? (
                     <>
                       <div className="flex-1 w-full bg-white px-4 py-2.5 rounded-xl border border-gray-200 shadow-sm">
                         <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
