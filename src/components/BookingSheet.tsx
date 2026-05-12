@@ -151,6 +151,12 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
     const thirtyMinsAgo = now - 30 * 60 * 1000;
     const todayStr = format(new Date(), "yyyy-MM-dd");
 
+    const parseLocal = (dateStr: string) => {
+      if (!dateStr) return new Date();
+      const [y, m, d] = dateStr.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    };
+
     roomBookings.forEach((b) => {
       // Cancelled / checked-out: those dates are always free
       if (b.status === "cancelled" || b.status === "checked_out") return;
@@ -169,8 +175,8 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
       }
 
       try {
-        const start = parseISO(b.checkIn);
-        const end = parseISO(b.checkOut);
+        const start = parseLocal(b.checkIn);
+        const end = parseLocal(b.checkOut);
         const days = eachDayOfInterval({ start, end });
         days.pop(); // check-out day is free for new arrivals
         dates.push(...days);
@@ -538,7 +544,7 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                           Check-in
                         </Label>
                         <DatePicker
-                          date={checkIn ? new Date(checkIn) : undefined}
+                          date={checkIn ? (function() { const [y,m,d] = checkIn.split('-').map(Number); return new Date(y, m-1, d); })() : undefined}
                           setDate={(d) =>
                             setCheckIn(d ? format(d, "yyyy-MM-dd") : "")
                           }
@@ -551,12 +557,12 @@ export function BookingSheet({ room, isOpen, onClose }: BookingSheetProps) {
                           Check-out
                         </Label>
                         <DatePicker
-                          date={checkOut ? new Date(checkOut) : undefined}
+                          date={checkOut ? (function() { const [y,m,d] = checkOut.split('-').map(Number); return new Date(y, m-1, d); })() : undefined}
                           setDate={(d) =>
                             setCheckOut(d ? format(d, "yyyy-MM-dd") : "")
                           }
                           label="Select Check-out"
-                          min={checkIn ? new Date(checkIn) : undefined}
+                          min={checkIn ? (function() { const [y,m,d] = checkIn.split('-').map(Number); return new Date(y, m-1, d); })() : undefined}
                           disabled={disabledDates}
                           align="end"
                         />

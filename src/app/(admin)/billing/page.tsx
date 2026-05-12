@@ -294,8 +294,9 @@ export default function BillingPage() {
 
     bookingsToSum.forEach(bk => {
       const rm = rooms.find(room => room._id === bk.roomId);
-      let nights = differenceInDays(parseISO(bk.checkOut), parseISO(bk.checkIn));
-      if (nights <= 0) nights = 1;
+      const d1 = new Date(bk.checkIn + "T00:00:00");
+      const d2 = new Date(bk.checkOut + "T00:00:00");
+      let nights = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / 86400000));
 
       const base = bk.tariff * nights;
       const extra = bk.extraBed ? 500 * nights : 0;
@@ -1576,10 +1577,12 @@ function ThermalReceiptContent({
 
   const totalBillAmount = bill?.totalAmount || (activeRoomId ? rc?.grandTotal : bc ? (bc.totalAmount + (includeGST ? bc.totalAmount * 0.18 : 0)) : tableGrandTotal) || 0;
   
+  const displayAdvance = rc?.totalAdvance ?? rc?.booking?.advance ?? bc?.advance ?? bill?.advancePaid ?? 0;
+
   const grandTotalPayable = activeRoomId || bill?.billType === "room"
-    ? Math.max(0, (rc?.grandTotal ?? bill?.totalAmount ?? 0) - (rc?.booking?.advance ?? bill?.advancePaid ?? 0))
+    ? Math.max(0, (rc?.grandTotal ?? bill?.totalAmount ?? 0) - displayAdvance)
     : bc || bill?.billType === "banquet"
-      ? Math.max(0, ((bc?.totalAmount ?? bill?.totalAmount ?? 0) + (includeGST ? (bc?.totalAmount ?? bill?.totalAmount ?? 0) * 0.18 : 0)) - (bc?.advance ?? bill?.advancePaid ?? 0))
+      ? Math.max(0, ((bc?.totalAmount ?? bill?.totalAmount ?? 0) + (includeGST ? (bc?.totalAmount ?? bill?.totalAmount ?? 0) * 0.18 : 0)) - displayAdvance)
       : (tc?.total ?? bill?.totalAmount ?? 0);
 
   const displayDiscount = discountAmount || bill?.discountAmount || 0;
@@ -1819,10 +1822,6 @@ function ThermalReceiptContent({
       {solidDivider()}
 
       {/* Adjustments */}
-      {activeRoomId && currentRoomCharges?.booking?.advance > 0 &&
-        row("Advance Paid", `- Rs.${currentRoomCharges.booking.advance.toLocaleString("en-IN")}`)}
-      {currentBanquetCharges?.advance > 0 &&
-        row("Advance Paid", `- Rs.${currentBanquetCharges.advance.toLocaleString("en-IN")}`)}
       {discountAmount > 0 && row("Discount", `- Rs.${discountAmount.toLocaleString("en-IN")}`)}
       {serviceCharge > 0 && row("Service Charge", `Rs.${serviceCharge.toLocaleString("en-IN")}`)}
       {housekeepingCharge > 0 && row("Housekeeping", `Rs.${housekeepingCharge.toLocaleString("en-IN")}`)}
@@ -1868,11 +1867,11 @@ function ThermalReceiptContent({
         <span>Rs.{totalBillAmount.toLocaleString("en-IN")}</span>
       </div>
 
-      {(activeRoomId ? currentRoomCharges?.totalAdvance : currentBanquetCharges?.advance) > 0 && (
+      {displayAdvance > 0 && (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: 11, marginBottom: 2, color: "#555" }}>
             <span>ADVANCE PAID</span>
-            <span>- Rs.{(activeRoomId ? currentRoomCharges.totalAdvance : currentBanquetCharges.advance).toLocaleString("en-IN")}</span>
+            <span>- Rs.{displayAdvance.toLocaleString("en-IN")}</span>
           </div>
           {solidDivider()}
           <div className="thermal-total-row" style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: 14, marginBottom: 2 }}>
@@ -1995,10 +1994,12 @@ function NormalInvoiceContent({
 
   const totalBillAmount = bill?.totalAmount || (activeRoomId ? rc?.grandTotal : bc ? (bc.totalAmount + (includeGST ? bc.totalAmount * 0.18 : 0)) : tableGrandTotal) || 0;
 
+  const displayAdvance = rc?.totalAdvance ?? rc?.booking?.advance ?? bc?.advance ?? bill?.advancePaid ?? 0;
+
   const grandTotalPayable = activeRoomId || bill?.billType === "room"
-    ? Math.max(0, (rc?.grandTotal ?? bill?.totalAmount ?? 0) - (rc?.booking?.advance ?? bill?.advancePaid ?? 0))
+    ? Math.max(0, (rc?.grandTotal ?? bill?.totalAmount ?? 0) - displayAdvance)
     : bc || bill?.billType === "banquet"
-      ? Math.max(0, ((bc?.totalAmount ?? bill?.totalAmount ?? 0) + (includeGST ? (bc?.totalAmount ?? bill?.totalAmount ?? 0) * 0.18 : 0)) - (bc?.advance ?? bill?.advancePaid ?? 0))
+      ? Math.max(0, ((bc?.totalAmount ?? bill?.totalAmount ?? 0) + (includeGST ? (bc?.totalAmount ?? bill?.totalAmount ?? 0) * 0.18 : 0)) - displayAdvance)
       : (tc?.total ?? bill?.totalAmount ?? 0);
 
   const subtotalDisplay = rc ? (rc.subtotal || 0) : bc ? (bc.totalAmount || 0) : bill ? (bill.subtotal || 0) : (tc?.total ?? 0);
@@ -2359,10 +2360,10 @@ function NormalInvoiceContent({
             </div>
           )}
 
-          {(activeRoomId ? currentRoomCharges?.totalAdvance : currentBanquetCharges?.advance) > 0 && (
+          {displayAdvance > 0 && (
             <div style={{ borderTop: "1px dashed #bbb", paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 11, color: "#777" }}>
               <span>Advance Paid</span>
-              <span style={{ fontFamily: mono }}>₹{(activeRoomId ? currentRoomCharges.totalAdvance : currentBanquetCharges.advance).toLocaleString("en-IN")}</span>
+              <span style={{ fontFamily: mono }}>₹{displayAdvance.toLocaleString("en-IN")}</span>
             </div>
           )}
 
@@ -2475,14 +2476,14 @@ function NormalInvoiceContent({
             </span>
           </div>
 
-          {(activeRoomId ? currentRoomCharges?.totalAdvance : currentBanquetCharges?.advance) > 0 && (
+          {displayAdvance > 0 && (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 6, color: "#d9534f" }}>
                 <span style={{ fontWeight: "bold", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em" }}>
                   Advance Paid
                 </span>
                 <span style={{ fontWeight: "bold", fontSize: 16, fontFamily: mono }}>
-                  - ₹{(activeRoomId ? currentRoomCharges.totalAdvance : currentBanquetCharges.advance).toLocaleString("en-IN")}
+                  - ₹{displayAdvance.toLocaleString("en-IN")}
                 </span>
               </div>
               <div style={{ borderTop: "1px solid #000", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
