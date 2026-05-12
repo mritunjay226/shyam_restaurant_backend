@@ -79,13 +79,13 @@ export const generateRoomBill = mutation({
     const allLinkedOrders: any[] = [];
 
     for (const b of bookingsToBill) {
-      // Recalculate actual nights stayed server-side
+      // Recalculate actual nights stayed server-side using the booked/edited checkout date
       const checkInDate = new Date(b.checkIn);
-      const today = new Date();
+      const checkOutDate = new Date(b.checkOut);
       let nights = Math.floor(
-        (today.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)
+        (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)
       );
-      if (nights === 0) nights = 1;
+      if (nights <= 0 || isNaN(nights)) nights = 1;
 
       totalRoomBase += b.tariff * nights;
       totalExtraBed += b.extraBed ? (nights * 500) : 0;

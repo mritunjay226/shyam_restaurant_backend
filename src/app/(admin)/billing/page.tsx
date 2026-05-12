@@ -294,7 +294,7 @@ export default function BillingPage() {
 
     bookingsToSum.forEach(bk => {
       const rm = rooms.find(room => room._id === bk.roomId);
-      let nights = differenceInDays(new Date(), parseISO(bk.checkIn));
+      let nights = differenceInDays(parseISO(bk.checkOut), parseISO(bk.checkIn));
       if (nights <= 0) nights = 1;
 
       const base = bk.tariff * nights;

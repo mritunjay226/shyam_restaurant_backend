@@ -195,7 +195,7 @@ export function RoomCard({ room, onClick }: RoomCardProps) {
             <span className="text-base font-bold tabular-nums tracking-tight">
               {(activeBooking?.totalAmount || 0).toLocaleString("en-IN")}
             </span>
-            <span className="text-xs ml-1 font-medium text-gray-400">/ night</span>
+            {/* <span className="text-xs ml-1 font-medium text-gray-400">/ night</span> */}
           </div>
 
           {statusKey === "pending_checkout" && (
