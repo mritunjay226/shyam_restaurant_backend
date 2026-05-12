@@ -490,14 +490,14 @@ export default function BillingPage() {
 
   let currentGrandTotal = 0;
   if (activeRoomId) {
-    currentGrandTotal = currentRoomCharges?.grandTotal || 0;
+    currentGrandTotal = Math.max(0, (currentRoomCharges?.grandTotal || 0) - (currentRoomCharges?.totalAdvance || 0));
   } else if (activeTableKey) {
     currentGrandTotal = tableGrandTotal;
   } else if (currentBanquetCharges) {
     const baseTotal = currentBanquetCharges.totalAmount;
     const cgst = includeGST ? baseTotal * 0.09 : 0;
     const sgst = includeGST ? baseTotal * 0.09 : 0;
-    currentGrandTotal = baseTotal + cgst + sgst;
+    currentGrandTotal = Math.max(0, baseTotal + cgst + sgst - (currentBanquetCharges.advance || 0));
   }
   const splitTotal = splitPayments.reduce((acc, curr) => acc + curr.amount, 0);
   const isSplitValid = Math.abs(currentGrandTotal - splitTotal) < 1;
@@ -1868,6 +1868,20 @@ function ThermalReceiptContent({
         <span>Rs.{totalBillAmount.toLocaleString("en-IN")}</span>
       </div>
 
+      {(activeRoomId ? currentRoomCharges?.totalAdvance : currentBanquetCharges?.advance) > 0 && (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: 11, marginBottom: 2, color: "#555" }}>
+            <span>ADVANCE PAID</span>
+            <span>- Rs.{(activeRoomId ? currentRoomCharges.totalAdvance : currentBanquetCharges.advance).toLocaleString("en-IN")}</span>
+          </div>
+          {solidDivider()}
+          <div className="thermal-total-row" style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: 14, marginBottom: 2 }}>
+            <span>BALANCE PAYABLE</span>
+            <span>Rs.{grandTotalPayable.toLocaleString("en-IN")}</span>
+          </div>
+        </>
+      )}
+
       {/* Payment history / splits */}
       {(bill?.splitPayments || splitPayments) && (
         <>
@@ -2460,6 +2474,27 @@ function NormalInvoiceContent({
               ₹{totalBillAmount.toLocaleString("en-IN")}
             </span>
           </div>
+
+          {(activeRoomId ? currentRoomCharges?.totalAdvance : currentBanquetCharges?.advance) > 0 && (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 6, color: "#d9534f" }}>
+                <span style={{ fontWeight: "bold", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em" }}>
+                  Advance Paid
+                </span>
+                <span style={{ fontWeight: "bold", fontSize: 16, fontFamily: mono }}>
+                  - ₹{(activeRoomId ? currentRoomCharges.totalAdvance : currentBanquetCharges.advance).toLocaleString("en-IN")}
+                </span>
+              </div>
+              <div style={{ borderTop: "1px solid #000", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontWeight: "bold", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.12em", color: "#000" }}>
+                  Balance Payable
+                </span>
+                <span style={{ fontWeight: "bold", fontSize: 20, fontFamily: mono, color: "#000", letterSpacing: "0.02em" }}>
+                  ₹{grandTotalPayable.toLocaleString("en-IN")}
+                </span>
+              </div>
+            </>
+          )}
 
           {bill?.status === "due" && (
             <>
