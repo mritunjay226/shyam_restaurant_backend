@@ -68,15 +68,15 @@ export const getDateAttendance = query({
   },
 });
 
-/** Get monthly summary for all staff */
 export const getMonthlyAttendance = query({
   args: { token: v.string(), month: v.string() }, // "YYYY-MM"
   handler: async (ctx, args) => {
     await verifyAdminAuth(ctx, args.token);
-    const allRecords = await ctx.db
+    return await ctx.db
       .query("attendance")
-      .collect(); // In production with many years of data, we'd filter by range
-    
-    return allRecords.filter(r => r.date.startsWith(args.month));
+      .withIndex("by_date", (q: any) =>
+        q.gte("date", args.month).lte("date", args.month + "\uffff")
+      )
+      .collect();
   },
 });

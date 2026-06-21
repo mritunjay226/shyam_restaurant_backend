@@ -70,9 +70,8 @@ export const getTodayArrivals = query({
   handler: async (ctx, args) =>
     ctx.db
       .query("bookings")
-      .filter((q) =>
-        q.and(q.eq(q.field("checkIn"), args.today), q.eq(q.field("status"), "confirmed"))
-      )
+      .withIndex("by_checkIn", (q) => q.eq("checkIn", args.today))
+      .filter((q) => q.eq(q.field("status"), "confirmed"))
       .collect(),
 });
 
@@ -81,9 +80,8 @@ export const getTodayDepartures = query({
   handler: async (ctx, args) =>
     ctx.db
       .query("bookings")
-      .filter((q) =>
-        q.and(q.eq(q.field("checkOut"), args.today), q.eq(q.field("status"), "checked_in"))
-      )
+      .withIndex("by_checkOut", (q) => q.eq("checkOut", args.today))
+      .filter((q) => q.eq(q.field("status"), "checked_in"))
       .collect(),
 });
 

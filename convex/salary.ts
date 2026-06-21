@@ -73,11 +73,33 @@ export const getMonthlyPayrollSnapshot = query({
     await verifyAdminAuth(ctx, args.token);
     
     const staff = await ctx.db.query("staff").collect();
-    const attendance = await ctx.db.query("attendance").collect();
-    const advances = await ctx.db.query("staffAdvances").filter(q => q.eq(q.field("status"), "pending")).collect();
-    const payments = await ctx.db.query("salaryPayments").filter(q => q.eq(q.field("month"), args.month)).collect();
+    const attendance = await ctx.db
+      .query("attendance")
+      .withIndex("by_date", (q: any) =>
+        q.gte("date", args.month).lte("date", args.month + "\uffff")
+      )
+      .collect();
 
-    return staff.map(s => {
+    // Fetch payments and advances per staff member using indexes
+    const staffCalculations = await Promise.all(
+      staff.map(async (s) => {
+        // Query advances for this staff member using the "by_staff" index
+        const staffAdvances = await ctx.db
+          .query("staffAdvances")
+          .withIndex("by_staff", (q) => q.eq("staffId", s._id))
+          .collect();
+
+        // Query payment record for this staff member and month using "by_staff_month"
+        const payment = await ctx.db
+          .query("salaryPayments")
+          .withIndex("by_staff_month", (q) => q.eq("staffId", s._id).eq("month", args.month))
+          .unique();
+
+        return { s, staffAdvances, payment };
+      })
+    );
+
+    return staffCalculations.map(({ s, staffAdvances, payment }) => {
       // 1. Calculate Worked Days and Leaves
       const staffAttend = attendance.filter(a => a.staffId === s._id && a.date.startsWith(args.month));
       
@@ -99,11 +121,10 @@ export const getMonthlyPayrollSnapshot = query({
       const earnings = Math.round(dailyRate * workedDays);
       const unpaidDeductions = Math.round(dailyRate * unpaidDays);
 
-      // 3. Advances
-      const staffAdvances = advances.filter(a => a.staffId === s._id);
-      const totalPendingAdvances = staffAdvances.reduce((sum, a) => sum + a.amount, 0);
-
-      const payment = payments.find(p => p.staffId === s._id);
+      // 3. Advances (only pending are recovered)
+      const totalPendingAdvances = staffAdvances
+        .filter(a => a.status === "pending")
+        .reduce((sum, a) => sum + a.amount, 0);
 
       return {
         staffId: s._id,

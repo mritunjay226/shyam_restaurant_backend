@@ -162,7 +162,7 @@ export const generateRoomBill = mutation({
         ...s,
         timestamp: Date.now()
       })),
-      status: "generated",
+      status: "paid",
       createdAt: new Date().toISOString().split("T")[0],
     });
 
@@ -799,6 +799,24 @@ export const deleteBill = mutation({
     }
 
     await ctx.db.delete(args.billId);
+  },
+});
+
+// MIGRATION: Update all existing 'generated' bills to 'paid'
+export const migrateGeneratedToPaid = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const bills = await ctx.db
+      .query("bills")
+      .withIndex("by_status", (q) => q.eq("status", "generated"))
+      .collect();
+
+    let count = 0;
+    for (const bill of bills) {
+      await ctx.db.patch(bill._id, { status: "paid" });
+      count++;
+    }
+    return { updatedCount: count };
   },
 });
 

@@ -135,16 +135,19 @@ export const getTodayOrders = query({
 });
 
 export const getUnbilledTableOrders = query({
-  handler: async (ctx) =>
-    ctx.db
-      .query("orders")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("roomId"), undefined), 
-          q.neq(q.field("status"), "paid")
-        )
+  args: {},
+  handler: async (ctx) => {
+    const activeStatuses = ["kot_generated", "preparing", "ready"];
+    const results = await Promise.all(
+      activeStatuses.map((status) =>
+        ctx.db
+          .query("orders")
+          .withIndex("by_status", (q) => q.eq("status", status))
+          .collect()
       )
-      .collect(),
+    );
+    return results.flat().filter((order) => order.roomId === undefined);
+  },
 });
 
 // ─────────────────────────────────────────────────────────────────

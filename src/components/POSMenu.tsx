@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, Fragment } from "react";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Minus, ArrowRight, Printer, Search, X, UtensilsCrossed, Receipt, ChefHat, Thermometer, FileText, Pencil, Trash2 } from "lucide-react";
@@ -269,6 +270,7 @@ function TableBillCard({
   generateTableBill: any;
   settings: any;
 }) {
+  const router = useRouter();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isGstBill, setIsGstBill] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -301,8 +303,8 @@ function TableBillCard({
   const handleConfirmBill = async () => {
     setIsGenerating(true);
     try {
-      const parsedAmountPaid = amountPaidInput.trim() !== "" ? parseFloat(amountPaidInput) : grandTotal;
-      await generateTableBill({
+      const parsedAmountPaid = amountPaidInput.trim() !== "" ? parseFloat(amountPaidInput) : 0;
+      const billId = await generateTableBill({
         outlet,
         tableNumber: tableNo,
         paymentMethod,
@@ -311,8 +313,11 @@ function TableBillCard({
         ...(discountAmt > 0 && { discountAmount: discountAmt }),
         amountPaid: parsedAmountPaid,
       });
-      toast.success(`✅ Bill generated for ${tableNo} · ₹${grandTotal.toLocaleString()}`);
+      toast.success(`✅ Bill generated for ${tableNo} · Status: ${parsedAmountPaid >= grandTotal ? "Paid" : "Due"}`);
       setIsExpanded(false);
+      if (billId) {
+        router.push(`/billing?tab=due_bills&billId=${billId}`);
+      }
     } catch (e: any) {
       toast.error(e.message || "Failed to generate bill");
     } finally {
@@ -556,14 +561,23 @@ function TableBillCard({
 
           {/* Amount Paid */}
           <div>
-            <Label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Amount Paid Today (₹)</Label>
+            <div className="flex justify-between items-center mb-1">
+              <Label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block">Amount Paid Today (₹)</Label>
+              <button 
+                type="button" 
+                onClick={() => setAmountPaidInput(String(grandTotal))}
+                className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider"
+              >
+                Set Full Payment
+              </button>
+            </div>
             <Input
               type="number"
               min={0}
               max={grandTotal}
               value={amountPaidInput}
               onChange={(e) => setAmountPaidInput(e.target.value)}
-              placeholder={`₹${grandTotal.toLocaleString()} (Full Amount)`}
+              placeholder="₹0 (Billed but Unpaid)"
               className="h-8 text-xs rounded-xl border-emerald-200 focus-visible:ring-emerald-500"
             />
             {amountPaidInput && parseFloat(amountPaidInput) < grandTotal && (

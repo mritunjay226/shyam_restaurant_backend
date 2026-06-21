@@ -205,6 +205,18 @@ export default function BillingPage() {
   const updateSplitPayments = useMutation(api.billing.updateSplitPayments);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      const billIdParam = params.get("billId");
+      if (tabParam === "due_bills" && billIdParam) {
+        setActiveTab("due_bills");
+        setActiveDueBillId(billIdParam as Id<"bills">);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (billDetails?.bill?.splitPayments) {
       setEditHistory(billDetails.bill.splitPayments);
     } else if (billDetails?.bill) {
@@ -395,7 +407,7 @@ export default function BillingPage() {
     const [outlet, tableNumber] = activeTableKey.split(":");
     setIsSubmitting(true);
     try {
-      const parsedAmountPaid = tableAmountPaidInput.trim() !== "" ? parseFloat(tableAmountPaidInput) : tableGrandTotal;
+      const parsedAmountPaid = tableAmountPaidInput.trim() !== "" ? parseFloat(tableAmountPaidInput) : 0;
 
       await generateTableBill({
         outlet,
@@ -413,7 +425,7 @@ export default function BillingPage() {
         gstin: guestGst || undefined,
         amountPaid: parsedAmountPaid,
       });
-      toast.success(`Table ${tableNumber} billed successfully!`);
+      toast.success(`✅ Table ${tableNumber} billed successfully! Status: ${parsedAmountPaid >= tableGrandTotal ? "Paid" : "Due"}`);
       setActiveTableKey(null);
       setDiscountAmount(0);
       setServiceCharge(0);
@@ -1351,19 +1363,28 @@ export default function BillingPage() {
                     {/* Amount Paid Today */}
                     {!useSplitPayment && (activeTableKey || activeBanquetId) && (
                       <div className="mt-4 pt-4 border-t border-gray-100">
-                        <Label className="text-sm font-bold text-gray-900 block mb-2">
-                          Amount Paid Today (₹)
-                        </Label>
+                        <div className="flex justify-between items-center mb-2">
+                          <Label className="text-sm font-bold text-gray-900 block">
+                            Amount Paid Today (₹)
+                          </Label>
+                          <button
+                            type="button"
+                            onClick={() => activeBanquetId ? setBanquetAmountPaidInput(String(currentGrandTotal)) : setTableAmountPaidInput(String(currentGrandTotal))}
+                            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 uppercase"
+                          >
+                            Set Full Payment
+                          </button>
+                        </div>
                         <input
                           type="number"
                           className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           value={activeBanquetId ? banquetAmountPaidInput : tableAmountPaidInput}
                           onChange={(e) => activeBanquetId ? setBanquetAmountPaidInput(e.target.value) : setTableAmountPaidInput(e.target.value)}
-                          placeholder={`Full amount: ${currentGrandTotal}`}
+                          placeholder="₹0 (Billed but Unpaid)"
                           min={0}
                           max={currentGrandTotal}
                         />
-                        <p className="text-[10px] text-gray-400 mt-1">Leave empty to pay full amount. Less amount marks bill as DUE.</p>
+                        <p className="text-[10px] text-gray-400 mt-1">Leave empty to mark as DUE (Unpaid). Click button to pay in full.</p>
                       </div>
                     )}
                   </div>
