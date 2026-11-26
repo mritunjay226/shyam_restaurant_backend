@@ -288,8 +288,10 @@ function TableBillCard({
   const subtotal = orders.reduce((sum: number, o: any) => sum + o.subtotal, 0);
   const discountAmt = parseFloat(discount) || 0;
   const afterDiscount = Math.max(0, subtotal - discountAmt);
-  const cgst = isGstBill ? Math.round(afterDiscount * 0.06 * 100) / 100 : 0;
-  const sgst = isGstBill ? Math.round(afterDiscount * 0.06 * 100) / 100 : 0;
+  const gstRate = (settings?.foodGst || 5) / 100;
+  const halfGstPercent = (gstRate / 2) * 100;
+  const cgst = isGstBill ? Math.round(afterDiscount * (gstRate / 2) * 100) / 100 : 0;
+  const sgst = isGstBill ? Math.round(afterDiscount * (gstRate / 2) * 100) / 100 : 0;
   const grandTotal = Math.round((afterDiscount + cgst + sgst) * 100) / 100;
 
   // Collect all items across KOTs for itemized display
@@ -500,7 +502,7 @@ function TableBillCard({
           <div className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
             <div>
               <p className="text-xs font-bold text-gray-700">GST Invoice</p>
-              <p className="text-[10px] text-gray-400">CGST 6% + SGST 6% on subtotal</p>
+              <p className="text-[10px] text-gray-400">CGST {halfGstPercent}% + SGST {halfGstPercent}% on subtotal</p>
             </div>
             <Switch checked={isGstBill} onCheckedChange={setIsGstBill} />
           </div>
@@ -603,11 +605,11 @@ function TableBillCard({
             {isGstBill && (
               <>
                 <div className="flex justify-between text-gray-600">
-                  <span>CGST @ 6%</span>
+                  <span>CGST @ {halfGstPercent}%</span>
                   <span>₹{cgst.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
-                  <span>SGST @ 6%</span>
+                  <span>SGST @ {halfGstPercent}%</span>
                   <span>₹{sgst.toFixed(2)}</span>
                 </div>
               </>
